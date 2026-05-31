@@ -1,5 +1,5 @@
 {
-  "name": "Email Sentinel",
+  "name": "Clarion",
   "image": "mcr.microsoft.com/devcontainers/python:3.13",
   "customizations": {
     "vscode": {

@@ -1,7 +1,7 @@
 # tools/sources
 
 Mirror of the [Mediacloud](https://search.mediacloud.org/directory) source
-catalog, stored in the sentinel postgres `sources` schema. Used as the seed
+catalog, stored in the clarion postgres `sources` schema. Used as the seed
 for news-sitemap discovery.
 
 ## Get an API key
@@ -12,7 +12,7 @@ profile page. Free tier gives 4000 hits/week — enough for ~3 full syncs.
 ## Run a sync
 
 ```sh
-export DATABASE_URL=postgresql://sentinel_user:...@host:5432/sentinel
+export DATABASE_URL=postgresql://clarion_user:...@host:5432/clarion
 export MEDIACLOUD_API_KEY=<your-key>
 uv run python -m tools.sources.mediacloud_sync
 ```
@@ -29,7 +29,7 @@ The original tooling used a local SQLite file (`sources.db`). To load an
 existing snapshot into postgres without re-syncing from the API:
 
 ```sh
-export DATABASE_URL=postgresql://sentinel_user:...@host:5432/sentinel
+export DATABASE_URL=postgresql://clarion_user:...@host:5432/clarion
 uv run python -m tools.sources.migrate_sqlite_to_postgres
 ```
 

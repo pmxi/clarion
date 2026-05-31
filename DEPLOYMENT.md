@@ -1,6 +1,6 @@
 # Deployment
 
-Sentinel's single live deployment runs on **`oracle`** — an Ubuntu host
+Clarion's single live deployment runs on **`oracle`** — an Ubuntu host
 reachable as the SSH alias `oracle` from a maintainer's laptop. Postgres
 runs natively on the same host. Everything below assumes you have SSH
 access to that host as `ubuntu`.
@@ -9,12 +9,12 @@ access to that host as `ubuntu`.
 
 | Path | What |
 |---|---|
-| `/home/ubuntu/sentinel` | Git checkout (tracks `origin/master`) |
-| `/home/ubuntu/sentinel/.venv` | uv-managed venv; `sentinel` console script lives here |
-| `/home/ubuntu/.config/sentinel/sentinel.env` | Runtime env — holds `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, etc. (chmod 600, never check in) |
-| `/home/ubuntu/.config/systemd/user/sentinel.service` | systemd user unit |
+| `/home/ubuntu/clarion` | Git checkout (tracks `origin/master`) |
+| `/home/ubuntu/clarion/.venv` | uv-managed venv; `clarion` console script lives here |
+| `/home/ubuntu/.config/clarion/clarion.env` | Runtime env — holds `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, etc. (chmod 600, never check in) |
+| `/home/ubuntu/.config/systemd/user/clarion.service` | systemd user unit |
 | `/var/log/postgresql/postgresql-*.log` | Postgres logs (root/postgres reads) |
-| `/tmp/sentinel-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
+| `/tmp/clarion-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
 
 The web UI listens on **`127.0.0.1:8765`** — bound to localhost only.
 Reach it from your laptop via an SSH tunnel (below).
@@ -23,14 +23,14 @@ Reach it from your laptop via an SSH tunnel (below).
 
 User-scoped (`systemctl --user`), not system-scoped, because it runs as
 the `ubuntu` user. The unit lives at
-`~/.config/systemd/user/sentinel.service` on oracle and contains:
+`~/.config/systemd/user/clarion.service` on oracle and contains:
 
 ```ini
 [Service]
 Type=simple
-WorkingDirectory=/home/ubuntu/sentinel
-EnvironmentFile=/home/ubuntu/.config/sentinel/sentinel.env
-ExecStart=/home/ubuntu/sentinel/.venv/bin/sentinel web --host 127.0.0.1 --port 8765
+WorkingDirectory=/home/ubuntu/clarion
+EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
+ExecStart=/home/ubuntu/clarion/.venv/bin/clarion web --host 127.0.0.1 --port 8765
 Restart=always
 RestartSec=5
 LimitNOFILE=131072
@@ -47,12 +47,12 @@ only and rebuild on first poll after a restart.
 
 Runs natively on oracle, listens on `localhost:5432`. Version 18.3.
 
-- Database: `sentinel`
-- Owner role used by the app: `sentinel_user`
+- Database: `clarion`
+- Owner role used by the app: `clarion_user`
 - `postgres` superuser available via `sudo -nu postgres psql`
 - The schema lives in two namespaces: `public` (runtime) and `sources` (Media Cloud catalog).
 
-`DATABASE_URL` in the env file points at `postgresql://sentinel_user:...@localhost:5432/sentinel`.
+`DATABASE_URL` in the env file points at `postgresql://clarion_user:...@localhost:5432/clarion`.
 
 ## Reaching the web UI from your laptop
 
@@ -64,7 +64,7 @@ ssh -fN -L 8765:localhost:8765 oracle
 open http://127.0.0.1:8765/
 ```
 
-For postgres access (e.g. running a CLI like `sentinel sources
+For postgres access (e.g. running a CLI like `clarion sources
 materialize` from your laptop) tunnel 5433 -> 5432 since 5432 is
 usually taken locally:
 
@@ -72,7 +72,7 @@ usually taken locally:
 ssh -fN -L 5433:localhost:5432 oracle
 
 # Then export a tunnel-aware DATABASE_URL for one-off commands
-export DATABASE_URL='postgresql://sentinel_user:<pw>@localhost:5433/sentinel'
+export DATABASE_URL='postgresql://clarion_user:<pw>@localhost:5433/clarion'
 ```
 
 To close a tunnel: `pkill -f 'ssh -fN -L 8765'` (or the matching port).
@@ -96,33 +96,33 @@ All run **on oracle** (`ssh oracle` first).
 
 ```bash
 # Status / health
-systemctl --user status sentinel.service
-systemctl --user show sentinel.service -p ActiveState,MainPID,MemoryCurrent
+systemctl --user status clarion.service
+systemctl --user show clarion.service -p ActiveState,MainPID,MemoryCurrent
 
 # Follow logs
-journalctl --user -u sentinel.service -f
-journalctl --user -u sentinel.service --since "5 minutes ago"
+journalctl --user -u clarion.service -f
+journalctl --user -u clarion.service --since "5 minutes ago"
 
 # Restart (picks up new code + systemd unit changes after daemon-reload)
-systemctl --user restart sentinel.service
+systemctl --user restart clarion.service
 
 # Stop / start
-systemctl --user stop sentinel.service
-systemctl --user start sentinel.service
+systemctl --user stop clarion.service
+systemctl --user start clarion.service
 
 # Apply a unit file change
 systemctl --user daemon-reload
-systemctl --user restart sentinel.service
+systemctl --user restart clarion.service
 ```
 
 ### Standard deploy
 
 ```bash
 ssh oracle '
-  cd /home/ubuntu/sentinel \
+  cd /home/ubuntu/clarion \
     && git fetch origin master \
     && git reset --hard origin/master \
-    && systemctl --user restart sentinel.service'
+    && systemctl --user restart clarion.service'
 ```
 
 Hot-reload picks up `stream` table changes within 30s without a restart
@@ -132,15 +132,15 @@ Hot-reload picks up `stream` table changes within 30s without a restart
 
 ```bash
 ssh oracle '
-  systemctl --user show sentinel.service -p ActiveState,MainPID
-  journalctl --user -u sentinel.service --since "30 seconds ago" --no-pager \
+  systemctl --user show clarion.service -p ActiveState,MainPID
+  journalctl --user -u clarion.service --since "30 seconds ago" --no-pager \
     | grep -E "ERROR|Traceback|Supervising"
   curl -sS -o /dev/null -w "/ HTTP %{http_code}\n" http://127.0.0.1:8765/'
 ```
 
 ## Database schema
 
-The runtime schema is in **`src/sentinel/local/schema.sql`** (applied
+The runtime schema is in **`src/clarion/local/schema.sql`** (applied
 idempotently at every supervisor startup via
 `LocalDatabase._create_tables`). The catalog schema lives in
 **`tools/sources/schema.sql`** (applied by the catalog tools).
@@ -151,7 +151,7 @@ All tables use **singular names** as of the May-2026 migration.
 
 | Table | Purpose |
 |---|---|
-| `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (sentinel). |
+| `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
 | `classification` | LLM result per event (FK). Holds `priority`, `summary`, `reasoning`, `model`, `prompt_version`. |
 | `classification_failure` | Symmetric to `classification` for failed classifies. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
@@ -176,16 +176,16 @@ DDL lives in checked-in SQL. For destructive or one-shot migrations,
 add a file under `tools/` and run it as the postgres superuser:
 
 ```bash
-ssh oracle 'sudo -nu postgres psql -d sentinel -v ON_ERROR_STOP=1 -f tools/your_migration.sql'
+ssh oracle 'sudo -nu postgres psql -d clarion -v ON_ERROR_STOP=1 -f tools/your_migration.sql'
 ```
 
 **Footgun:** if you run the migration as `postgres` and it creates new
-tables, those tables are owned by `postgres` and the `sentinel_user`
+tables, those tables are owned by `postgres` and the `clarion_user`
 role can't run `CREATE INDEX IF NOT EXISTS` against them at supervisor
 startup. After any migration that creates tables, fix ownership:
 
 ```sql
-ALTER TABLE <newtable> OWNER TO sentinel_user;
+ALTER TABLE <newtable> OWNER TO clarion_user;
 ```
 
 This bit us during the singular-names migration; the
@@ -205,11 +205,11 @@ uv run python -m tools.sources.discover_sitemaps --limit 10000 --min-spw 100 --c
 uv run python -m tools.sources.discover_feeds --limit 10000 --min-spw 100 --concurrency 100
 
 # 4. Turn catalog rows into runtime streams (idempotent)
-uv run sentinel sources materialize --limit 500 --min-fresh 50
-uv run sentinel sources materialize --feeds-only --limit 200
+uv run clarion sources materialize --limit 500 --min-fresh 50
+uv run clarion sources materialize --feeds-only --limit 200
 
 # Optional: drop materialized streams no longer matching a filter
-uv run sentinel sources materialize --limit 100 --prune
+uv run clarion sources materialize --limit 100 --prune
 ```
 
 The supervisor's hot-reload picks up new `stream` rows within 30s — no
@@ -222,7 +222,7 @@ touches those prefixes.
 - Model is configured via `app_setting.LLM_MODEL` (currently
   `gpt-4o-mini`). Operator key is in `app_setting.LLM_API_KEY`.
 - Kill switch lives in source: `_CLASSIFICATION_DISABLED` at the top of
-  `src/sentinel/local/monitor.py`. Set to `True` to make every item
+  `src/clarion/local/monitor.py`. Set to `True` to make every item
   skip the LLM call (still emits event rows).
 - Per-source skip: items with `metadata.skip_classification = True`
   never reach the LLM. `BlueskyStream` does this because the firehose
@@ -255,7 +255,7 @@ For reference if you ever blow away the catalog:
 ## Quick `psql` recipes
 
 ```bash
-ssh oracle 'sudo -nu postgres psql -d sentinel'
+ssh oracle 'sudo -nu postgres psql -d clarion'
 
 -- Live system snapshot
 SELECT

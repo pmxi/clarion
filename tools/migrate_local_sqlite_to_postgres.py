@@ -15,7 +15,7 @@ from typing import Iterable, Sequence
 import psycopg
 from dotenv import load_dotenv
 
-from sentinel.local.database import LocalDatabase
+from clarion.local.database import LocalDatabase
 
 
 TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "sqlite_path",
         nargs="?",
-        default="sentinel-local.db",
+        default="clarion-local.db",
         help="Path to the old local SQLite database.",
     )
     parser.add_argument(

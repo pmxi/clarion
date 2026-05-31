@@ -1,6 +1,6 @@
 """Train the could-be-news binary classifier from hand labels.
 
-Reads sentinel-labels.db's labeling_examples table, encodes each text with
+Reads clarion-labels.db's labeling_examples table, encodes each text with
 the frozen sentence encoder (see tools/embedder.py — currently
 EmbeddingGemma-300M with the Classification prompt), and fits a
 logistic-regression head on top. Reports leave-one-out CV (honest at
@@ -93,7 +93,7 @@ def show_examples(pipe: Pipeline, texts: list[str], y: np.ndarray, n: int = 5) -
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--db", default="sentinel-labels.db")
+    p.add_argument("--db", default="clarion-labels.db")
     p.add_argument("--out", default="artifacts/classifier-v1.joblib")
     args = p.parse_args()
 

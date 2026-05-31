@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Sentinel Monitor",
+            "name": "Clarion Monitor",
             "type": "debugpy",
             "request": "launch",
             "module": "src.main",
@@ -16,10 +16,10 @@
             }
         },
         {
-            "name": "Sentinel Monitor (File)",
+            "name": "Clarion Monitor (File)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/sentinel.py",
+            "program": "${workspaceFolder}/clarion.py",
             "justMyCode": true,
             "console": "integratedTerminal"
         }

@@ -19,6 +19,9 @@ token.json
 config/mailboxes.yaml
 
 # Database
+clarion.db
+clarion*.db
+# Legacy local files from before the Clarion rename.
 sentinel.db
 sentinel*.db
 tools/sources/sources.db

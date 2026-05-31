@@ -34,7 +34,7 @@ from tools.sources.db import open_db
 logger = logging.getLogger("discover_sitemaps")
 
 NEWS_NS = "http://www.google.com/schemas/sitemap-news/0.9"
-USER_AGENT = "Mozilla/5.0 (compatible; SentinelDiscoveryBot/0.1; news-sitemap-finder)"
+USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; news-sitemap-finder)"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30)
 PER_WALK_DELAY = 1.0
 INDEX_CHILD_FETCH_LIMIT = 8

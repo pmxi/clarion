@@ -1,4 +1,4 @@
-"""Sync the Mediacloud source catalog into the sentinel postgres `sources` schema.
+"""Sync the Mediacloud source catalog into the clarion postgres `sources` schema.
 
 Usage:
     DATABASE_URL=postgresql://... MEDIACLOUD_API_KEY=... \\

@@ -131,7 +131,7 @@ def summary(results: list[dict]) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--db", default="sentinel-labels.db")
+    p.add_argument("--db", default="clarion-labels.db")
     p.add_argument(
         "--only",
         default=None,

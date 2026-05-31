@@ -16,7 +16,7 @@ def open_db(database_url: str | None = None) -> psycopg.Connection:
     url = database_url or os.environ.get(DATABASE_URL_ENV)
     if not url:
         raise RuntimeError(
-            f"set {DATABASE_URL_ENV} to the sentinel postgres connection string"
+            f"set {DATABASE_URL_ENV} to the clarion postgres connection string"
         )
     conn = psycopg.connect(url, row_factory=dict_row)
     conn.autocommit = True

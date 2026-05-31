@@ -9,7 +9,7 @@ separate labels DB so the runtime can never accidentally touch them.
 Then open http://127.0.0.1:8767 and press J / K / Space.
 
 Stop with Ctrl-C. Throw the script away when you're done collecting labels —
-the labeling_examples table in sentinel-labels.db is what matters.
+the labeling_examples table in clarion-labels.db is what matters.
 """
 
 from __future__ import annotations
@@ -320,12 +320,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--db",
-        default="sentinel-labels.db",
+        default="clarion-labels.db",
         help="path to the labels DB (created if missing)",
     )
     p.add_argument(
         "--source-db",
-        default="sentinel-local.db",
+        default="clarion-local.db",
         help="path to the runtime DB to read live_events from for backfill",
     )
     p.add_argument("--port", type=int, default=8767)

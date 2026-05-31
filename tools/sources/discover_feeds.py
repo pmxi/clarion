@@ -36,7 +36,7 @@ from tools.sources.db import open_db
 
 logger = logging.getLogger("discover_feeds")
 
-USER_AGENT = "Mozilla/5.0 (compatible; SentinelDiscoveryBot/0.1; rss-feed-finder)"
+USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; rss-feed-finder)"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20)
 PER_HOST_DELAY = 1.0
 

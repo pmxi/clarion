@@ -1,4 +1,4 @@
--- Mediacloud source catalog. Lives in the `sources` schema of the sentinel
+-- Mediacloud source catalog. Lives in the `sources` schema of the clarion
 -- postgres database. Re-derivable: safe to drop and re-sync.
 -- All tables use singular names. Booleans are BOOLEAN. ISO timestamps are
 -- TIMESTAMPTZ (with the one exception of source.last_story which Mediacloud
