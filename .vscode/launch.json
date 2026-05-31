@@ -8,20 +8,13 @@
             "name": "Clarion Monitor",
             "type": "debugpy",
             "request": "launch",
-            "module": "src.main",
+            "module": "clarion.local.cli",
+            "args": ["web"],
             "justMyCode": true,
             "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}"
+                "PYTHONPATH": "${workspaceFolder}/src"
             }
-        },
-        {
-            "name": "Clarion Monitor (File)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/clarion.py",
-            "justMyCode": true,
-            "console": "integratedTerminal"
         }
     ]
 }

@@ -40,13 +40,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     def open_db() -> LocalDatabase:
         return LocalDatabase(app.config["DATABASE_URL"])
 
-    @app.context_processor
-    def inject_runtime_context():
-        return {
-            "identity_enabled": False,
-            "current_user": {"email": "local@clarion"},
-        }
-
     @app.route("/")
     def dashboard():
         db = open_db()

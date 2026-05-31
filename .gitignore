@@ -11,13 +11,6 @@ __pycache__/
 # Contains secrets
 .env
 
-# Google API credentials
-credentials.json
-token.json
-
-# Mail configuration (contains sensitive data)
-config/mailboxes.yaml
-
 # Database
 clarion.db
 clarion*.db
