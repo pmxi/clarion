@@ -1,15 +1,15 @@
 """Stream abstraction — transport-agnostic source of Items.
 
-Every datastream (email, RSS, GitHub notifications, Slack mentions, Bluesky
+Every datastream (RSS, publisher sitemaps, Bluesky
 firehose, ...) implements `Stream`. The async-generator contract hides whether
-a stream is poll-based (RSS, IMAP) or push-based (WebSocket, SSE) — the
+a stream is poll-based (RSS, sitemaps) or push-based (WebSocket, SSE) — the
 supervisor consumes both identically:
 
     async for item in stream.items():
         ...
 
 The Item is what crosses the stream boundary. Source-specific types
-(EmailMessage, RSSEntry) stay inside each stream's implementation.
+(RSSEntry, sitemap records) stay inside each stream's implementation.
 """
 
 from __future__ import annotations

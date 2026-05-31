@@ -6,7 +6,6 @@ import json
 from typing import Any, Dict, List
 
 from sentinel.core.streams import all_specs, ensure_loaded
-from sentinel.core.streams.email.mail_config import MailAccountConfig, MailProvider
 from sentinel.core.streams.rss.config import RSSStreamConfig
 from sentinel.core.streams.sitemap_news.config import SitemapNewsStreamConfig
 from sentinel.local.database import LocalDatabase
@@ -31,15 +30,7 @@ class LocalStreamService:
                 "error": None,
             }
             try:
-                if row["stream_type"] == "email":
-                    cfg = MailAccountConfig.model_validate_json(row["config_json"])
-                    entry["enabled"] = cfg.enabled
-                    entry["detail"] = (
-                        f"{cfg.auth.username}@{cfg.server}"
-                        if cfg.provider in (MailProvider.IMAP, "imap")
-                        else str(cfg.provider)
-                    )
-                elif row["stream_type"] == "rss":
+                if row["stream_type"] == "rss":
                     cfg = RSSStreamConfig.model_validate_json(row["config_json"])
                     entry["enabled"] = cfg.enabled
                     entry["detail"] = str(cfg.feed_url)
@@ -51,6 +42,8 @@ class LocalStreamService:
                     data = json.loads(row["config_json"])
                     entry["enabled"] = bool(data.get("enabled", True))
                     entry["detail"] = data.get("endpoint", "jetstream")
+                else:
+                    raise ValueError(f"Unsupported stream type: {row['stream_type']}")
             except Exception as exc:
                 entry["error"] = str(exc)
                 entry["enabled"] = False
@@ -80,11 +73,3 @@ class LocalStreamService:
         data = json.loads(row["config_json"])
         data["enabled"] = not data.get("enabled", True)
         self.db.upsert_stream(name, row["stream_type"], json.dumps(data))
-
-    def persist_email_token(self, name: str, token_json: str) -> None:
-        row = self.db.get_stream(name)
-        if not row:
-            return
-        config = MailAccountConfig.model_validate_json(row["config_json"])
-        config.auth.token_json = token_json
-        self.db.upsert_stream(name, row["stream_type"], config.model_dump_json())

@@ -1,7 +1,7 @@
 """Base class for item-level notifications.
 
 An ItemNotifier turns an (Item, ClassificationResult) pair into a user-visible
-notification over some channel (Telegram, email, SMS, etc.). Subclasses only
+notification over some channel (Telegram, SMS, etc.). Subclasses only
 decide the formatting + transport.
 """
 

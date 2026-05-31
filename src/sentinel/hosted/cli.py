@@ -53,14 +53,6 @@ def cmd_init(_args: Namespace) -> None:
         if tg_user:
             db.set_app_setting("TELEGRAM_BOT_USERNAME", tg_user.lstrip("@"))
 
-    resend_key = _prompt_secret("Resend API key (or blank)")
-    if resend_key:
-        db.set_app_setting("RESEND_API_KEY", resend_key)
-        from_addr = _prompt("From address")
-        if from_addr:
-            db.set_app_setting("EMAIL_FROM_ADDRESS", from_addr)
-        db.set_app_setting("EMAIL_FROM_NAME", _prompt("From name", default="Sentinel"))
-
     db.set_app_setting(
         "MAX_LOOKBACK_HOURS",
         _prompt("Max lookback (hours)", default=str(settings.MAX_LOOKBACK_HOURS)),

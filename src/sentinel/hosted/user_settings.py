@@ -22,7 +22,6 @@ class UserSettings:
 
     TELEGRAM_CHAT_ID: str = ""
     CLASSIFICATION_NOTES: str = ""
-    EMAIL_NOTIFICATION_TO: str = ""  # optional: send notifications via Resend to this address
 
     @classmethod
     def load(cls, db: "HostedDatabase", user_id: int) -> "UserSettings":
@@ -35,6 +34,3 @@ class UserSettings:
 
     def has_telegram(self) -> bool:
         return bool(self.TELEGRAM_CHAT_ID)
-
-    def has_email_notifications(self) -> bool:
-        return bool(self.EMAIL_NOTIFICATION_TO)

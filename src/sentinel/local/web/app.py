@@ -15,7 +15,6 @@ from flask import Flask, Response, abort, redirect, render_template, request, st
 
 from sentinel.core.logging_config import get_logger
 from sentinel.core.streams import ensure_loaded
-from sentinel.core.streams.email.mail_config import AccountSettings, AuthConfig, AuthMethod, MailAccountConfig, MailProvider
 from sentinel.core.streams.rss.config import RSSStreamConfig
 from sentinel.core.time_utils import utc_now
 from sentinel.local.config import settings
@@ -25,7 +24,6 @@ from sentinel.local.monitor import LocalMonitor
 from sentinel.local.services.preferences import LocalPreferencesService
 from sentinel.local.services.runtime import LocalRuntimeService
 from sentinel.local.services.streams import LocalStreamService
-from sentinel.local.web.imap_probe import probe_imap
 
 logger = get_logger(__name__)
 
@@ -58,25 +56,17 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
             db.close()
         return render_template("dashboard.html", **snapshot)
 
-    @app.route("/preferences", methods=["GET", "POST"])
+    @app.route("/preferences")
     def preferences_page():
         db = open_db()
         try:
-            service = LocalPreferencesService(db)
-            if request.method == "POST":
-                service.save_email_notification_to(
-                    request.form.get("EMAIL_NOTIFICATION_TO", "")
-                )
-                return redirect(url_for("preferences_page", saved=1))
-            prefs = service.load()
+            prefs = LocalPreferencesService(db).load()
         finally:
             db.close()
         return render_template(
             "preferences.html",
             telegram_chat_id=prefs.TELEGRAM_CHAT_ID,
             telegram_bot_username=settings.TELEGRAM_BOT_USERNAME,
-            email_notification_to=prefs.EMAIL_NOTIFICATION_TO,
-            saved=request.args.get("saved") == "1",
         )
 
     @app.route("/preferences/telegram/link", methods=["POST"])
@@ -383,83 +373,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     def new_stream_page():
         return render_template("new_stream.html")
 
-    @app.route("/streams/new/email", methods=["GET", "POST"])
-    def new_email_stream_page():
-        providers = _imap_provider_presets()
-        if request.method == "POST":
-            form = request.form
-            preset_key = form.get("preset", "custom")
-            preset = providers.get(preset_key) or providers["custom"]
-
-            name = form.get("name", "").strip()
-            username = form.get("username", "").strip()
-            password = form.get("password", "")
-            server = (form.get("server", "").strip() or preset["server"]).strip()
-            port_str = form.get("port", "").strip() or str(preset["port"])
-
-            errors: List[str] = []
-            if not name:
-                errors.append("Pick a friendly name for this stream.")
-            if not username:
-                errors.append("Email address is required.")
-            if not password:
-                errors.append("App password is required.")
-            if not server:
-                errors.append("IMAP server is required.")
-            try:
-                port = int(port_str)
-            except ValueError:
-                errors.append(f"Port must be a number (got {port_str!r}).")
-                port = 993
-
-            db = open_db()
-            try:
-                service = LocalStreamService(db)
-                if name and service.get_stream(name):
-                    errors.append(
-                        f"You already have a stream named {name!r}. Pick a different name."
-                    )
-                if not errors:
-                    probe = probe_imap(server, port, username, password)
-                    if not probe.ok:
-                        errors.append(probe.error or "Connection failed.")
-                if not errors:
-                    config = MailAccountConfig(
-                        provider=MailProvider.IMAP,
-                        server=server,
-                        port=port,
-                        auth=AuthConfig(
-                            method=AuthMethod.PASSWORD,
-                            username=username,
-                            password=password,
-                        ),
-                        settings=AccountSettings(),
-                    )
-                    service.add_stream(name, "email", config.model_dump_json())
-                    return redirect(url_for("streams_page"))
-            finally:
-                db.close()
-
-            return render_template(
-                "new_email_stream.html",
-                providers=providers,
-                errors=errors,
-                form={
-                    "preset": preset_key,
-                    "name": name,
-                    "username": username,
-                    "server": server,
-                    "port": port_str,
-                },
-            )
-
-        return render_template(
-            "new_email_stream.html",
-            providers=providers,
-            errors=[],
-            form={"preset": "gmail", "name": "", "username": "", "server": "", "port": ""},
-        )
-
     @app.route("/streams/new/rss", methods=["GET", "POST"])
     def new_rss_stream_page():
         if request.method == "POST":
@@ -666,60 +579,11 @@ def _sse_frame(event_id: int, event_type: str, payload_json: str) -> str:
     return f"id: {event_id}\nevent: {event_type}\ndata: {payload_json}\n\n"
 
 
-def _imap_provider_presets() -> Dict[str, Dict[str, Any]]:
-    return {
-        "gmail": {
-            "label": "Gmail",
-            "server": "imap.gmail.com",
-            "port": 993,
-            "app_password_url": "https://myaccount.google.com/apppasswords",
-            "note": "2-Step Verification must be enabled on your Google account before app passwords are available.",
-        },
-        "icloud": {
-            "label": "iCloud",
-            "server": "imap.mail.me.com",
-            "port": 993,
-            "app_password_url": "https://appleid.apple.com",
-            "note": "Apple ID → Sign-In and Security → App-Specific Passwords.",
-        },
-        "fastmail": {
-            "label": "Fastmail",
-            "server": "imap.fastmail.com",
-            "port": 993,
-            "app_password_url": "https://app.fastmail.com/settings/security",
-            "note": "Settings → Password & Security → New app password.",
-        },
-        "outlook": {
-            "label": "Outlook.com",
-            "server": "outlook.office365.com",
-            "port": 993,
-            "app_password_url": "https://account.microsoft.com/security",
-            "note": "Consumer outlook.com accounts only. Enterprise Microsoft 365 tenants require OAuth, which isn't supported yet.",
-        },
-        "yahoo": {
-            "label": "Yahoo",
-            "server": "imap.mail.yahoo.com",
-            "port": 993,
-            "app_password_url": "https://login.yahoo.com/account/security",
-            "note": "Account security → Generate app password.",
-        },
-        "custom": {
-            "label": "Custom IMAP server",
-            "server": "",
-            "port": 993,
-            "app_password_url": "",
-            "note": "Enter the IMAP server hostname and port yourself.",
-        },
-    }
-
-
 def _base_prompt_preview() -> str:
     return (
         "You are a classification assistant. The user subscribes to several "
-        "information streams (email, RSS, ...) and wants to be alerted only to "
+        "news and social information streams and wants to be alerted only to "
         "the items that genuinely matter.\n\n"
-        "For emails, IMPORTANT means: addressed to me personally, job interview "
-        "offers, legal matters, urgent. NORMAL means everything else.\n\n"
         "For RSS items, IMPORTANT means: major breaking news with real "
         "consequences, security advisories, releases the user cares about."
     )

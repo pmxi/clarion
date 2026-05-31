@@ -148,7 +148,7 @@ class TelegramBotListener:
         logger.info("linked local runtime to telegram chat_id=%s", chat_id)
         self._reply(
             chat_id,
-            "✅ Linked. You'll receive a ping here when Sentinel finds an important email.",
+            "✅ Linked. You'll receive a ping here when Sentinel finds an important item.",
         )
 
     def _reply(self, chat_id: int, text: str) -> None:

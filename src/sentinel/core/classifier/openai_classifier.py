@@ -110,7 +110,7 @@ class OpenAIItemClassifier:
         rendered = self._render_item(item)
         return f"""
 You are a classification assistant. The user subscribes to several information streams
-(email, RSS news, GitHub notifications, etc.) and wants to be alerted only to the items
+(RSS news, publisher sitemaps, social feeds, etc.) and wants to be alerted only to the items
 that genuinely matter to them. Classify the following item as IMPORTANT or NORMAL.
 
 {criteria}
@@ -144,16 +144,6 @@ Return:
 
 
 def _default_criteria_for(source_type: str) -> str:
-    if source_type == "email":
-        return (
-            "IMPORTANT emails:\n"
-            "- Addressed to me personally\n"
-            "- Job interview offer\n"
-            "- Legal matter\n"
-            "- Urgent\n\n"
-            "NORMAL emails:\n"
-            "- Everything else, including newsletters, mass mailings, and apparent scams"
-        )
     if source_type == "rss":
         return (
             "IMPORTANT RSS items:\n"

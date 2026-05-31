@@ -19,9 +19,6 @@ class LocalSetupService:
         llm_model: str,
         telegram_bot_token: str = "",
         telegram_bot_username: str = "",
-        resend_api_key: str = "",
-        email_from_address: str = "",
-        email_from_name: str = "Sentinel",
         max_lookback_hours: str = "24",
     ) -> None:
         if not llm_api_key:
@@ -33,11 +30,5 @@ class LocalSetupService:
             self.db.set_app_setting("TELEGRAM_BOT_TOKEN", telegram_bot_token)
         if telegram_bot_username:
             self.db.set_app_setting("TELEGRAM_BOT_USERNAME", telegram_bot_username.lstrip("@"))
-        if resend_api_key:
-            self.db.set_app_setting("RESEND_API_KEY", resend_api_key)
-        if email_from_address:
-            self.db.set_app_setting("EMAIL_FROM_ADDRESS", email_from_address)
-        if email_from_name:
-            self.db.set_app_setting("EMAIL_FROM_NAME", email_from_name)
         if not self.db.get_app_setting("SESSION_SECRET"):
             self.db.set_app_setting("SESSION_SECRET", secrets.token_hex(32))

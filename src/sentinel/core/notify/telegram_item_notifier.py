@@ -10,14 +10,12 @@ Watch, so every character counts):
     <summary>
 
 Source-type-specific author extraction:
-  - email: bare address (no display name)
   - rss:   feed title
   - other: item.author
 """
 
 from __future__ import annotations
 
-from email.utils import parseaddr
 from typing import Optional
 
 from sentinel.core.logging_config import get_logger
@@ -65,9 +63,6 @@ class TelegramItemNotifier(ItemNotifier):
 
 def _attribution(item: Item) -> str:
     """The text that goes on the first line of the notification."""
-    if item.source_type == "email":
-        _, addr = parseaddr(item.author or "")
-        return addr or item.author or "email"
     if item.source_type == "rss":
         feed = item.metadata.get("feed_title") if item.metadata else None
         return feed or item.author or "RSS"

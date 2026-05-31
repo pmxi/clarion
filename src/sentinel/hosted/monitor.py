@@ -81,7 +81,11 @@ class HostedMonitor:
 
         for row in rows:
             try:
-                stream = self._build_stream(user_id, row)
+                stream = build_stream(
+                    stream_type=row["stream_type"],
+                    name=row["name"],
+                    config_json=row["config_json"],
+                )
             except Exception as exc:
                 logger.error(
                     "Failed to build hosted stream %r for user_id=%s: %s",
@@ -95,20 +99,6 @@ class HostedMonitor:
                 name=f"hosted-stream:{user_id}:{row['name']}",
             )
             self._tasks.append(task)
-
-    def _build_stream(self, user_id: int, row: Dict[str, Any]) -> Stream:
-        extra: Dict[str, Any] = {}
-        if row["stream_type"] == "email":
-            extra["on_token_refreshed"] = (
-                lambda token_json, uid=user_id, name=row["name"]:
-                self.stream_service.persist_email_token(uid, name, token_json)
-            )
-        return build_stream(
-            stream_type=row["stream_type"],
-            name=row["name"],
-            config_json=row["config_json"],
-            **extra,
-        )
 
     async def _run_stream(self, user_id: int, stream: Stream) -> None:
         while not self._shutdown.is_set():

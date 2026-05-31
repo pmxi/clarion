@@ -16,10 +16,6 @@ class HostedSettings:
     LLM_API_KEY: Optional[str] = None
     LLM_MODEL: str = "gpt-5.4"
 
-    RESEND_API_KEY: Optional[str] = None
-    EMAIL_FROM_ADDRESS: Optional[str] = None
-    EMAIL_FROM_NAME: str = ""
-
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     SESSION_SECRET: Optional[str] = None

@@ -140,7 +140,17 @@ class LocalMonitor:
 
     async def _refresh_streams(self, initial: bool = False) -> None:
         rows = await asyncio.to_thread(self.db.list_streams)
-        desired: Dict[str, Dict[str, Any]] = {r["name"]: r for r in rows}
+        supported_types = self.stream_service.specs()
+        unsupported = [r for r in rows if r["stream_type"] not in supported_types]
+        if initial and unsupported:
+            logger.warning(
+                "Ignoring %d unsupported stream row(s): %s",
+                len(unsupported),
+                ", ".join(sorted({r["stream_type"] for r in unsupported})),
+            )
+        desired: Dict[str, Dict[str, Any]] = {
+            r["name"]: r for r in rows if r["stream_type"] in supported_types
+        }
 
         # Cancel tasks for streams that no longer exist.
         removed = [n for n in self._stream_tasks if n not in desired]
@@ -171,7 +181,11 @@ class LocalMonitor:
 
     def _start_stream(self, name: str, row: Dict[str, Any]) -> None:
         try:
-            stream = self._build_stream(row)
+            stream = build_stream(
+                stream_type=row["stream_type"],
+                name=row["name"],
+                config_json=row["config_json"],
+            )
         except Exception as exc:
             logger.error(
                 "Failed to build stream %r (type=%s): %s",
@@ -196,17 +210,6 @@ class LocalMonitor:
             await task
         except (asyncio.CancelledError, Exception):
             pass
-
-    def _build_stream(self, row: Dict[str, Any]) -> Stream:
-        extra: Dict[str, Any] = {}
-        if row["stream_type"] == "email":
-            extra["on_token_refreshed"] = lambda token_json, name=row["name"]: self.stream_service.persist_email_token(name, token_json)
-        return build_stream(
-            stream_type=row["stream_type"],
-            name=row["name"],
-            config_json=row["config_json"],
-            **extra,
-        )
 
     def _get_preferences(self) -> LocalPreferences:
         # Cached. Refreshes only on full supervisor restart; rare relative

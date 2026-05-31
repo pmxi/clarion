@@ -2,9 +2,9 @@
 
 Schema:
   users                 identity (Google OAuth sub + email/name cache)
-  app_settings          operator-level config (LLM key, Resend, etc.)
+  app_settings          operator-level config (LLM key, OAuth, etc.)
   user_settings         per-user config (Telegram creds, classification notes)
-  streams               per-user datastreams (email, rss, ...) as JSON blobs
+  streams               per-user datastreams as JSON blobs
   processed_items       dedup ledger, scoped by (user_id, source_type, item_id)
   monitoring_state      per-user last-check / start timestamps
   telegram_link_tokens  short-lived tokens for the /start <token> linking flow

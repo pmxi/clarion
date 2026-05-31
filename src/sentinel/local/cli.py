@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
 from getpass import getpass
-from pathlib import Path
 from typing import Optional
 
 from sentinel.core.streams.bluesky.config import BlueskyStreamConfig
-from sentinel.core.streams.email.mail_config import AccountSettings, AuthConfig, AuthMethod, MailAccountConfig, MailProvider
 from sentinel.core.streams.rss.config import RSSStreamConfig
 from sentinel.core.streams.sitemap_news.config import SitemapNewsStreamConfig
 from sentinel.local.config import settings
@@ -42,14 +39,6 @@ def _prompt_secret(label: str) -> str:
     return getpass(f"{label}: ").strip()
 
 
-def _read_file_content(label: str) -> str:
-    path_str = _prompt(f"Path to {label}")
-    path = Path(path_str).expanduser()
-    if not path.is_file():
-        raise SystemExit(f"File not found: {path}")
-    return path.read_text()
-
-
 def cmd_init(_args: argparse.Namespace) -> None:
     db = _open_db()
     settings.load(db)
@@ -58,16 +47,12 @@ def cmd_init(_args: argparse.Namespace) -> None:
         llm_model=_prompt("OpenAI model", default=settings.LLM_MODEL),
         telegram_bot_token=_prompt_secret("Telegram bot token (or blank to skip)"),
         telegram_bot_username=_prompt("Telegram bot username (or blank)"),
-        resend_api_key=_prompt_secret("Resend API key (or blank)"),
-        email_from_address=_prompt("From address (or blank)"),
-        email_from_name=_prompt("From name", default="Sentinel"),
         max_lookback_hours=_prompt(
             "Max lookback (hours)",
             default=str(settings.MAX_LOOKBACK_HOURS),
         ),
     )
     print("\nLocal setup complete.")
-    print("  - Add a stream:    sentinel stream add --type email")
     print("  - Add an RSS feed: sentinel stream add --type rss")
     print("  - Start monitor:   sentinel run")
     print("  - Open web UI:     sentinel web")
@@ -78,7 +63,7 @@ def cmd_stream_list(_args: argparse.Namespace) -> None:
     db = _open_db()
     rows = LocalStreamService(db).list_stream_rows()
     if not rows:
-        print("No streams configured. Run 'sentinel stream add --type email' or '--type rss'.")
+        print("No streams configured. Run 'sentinel stream add --type rss'.")
         return
     for row in rows:
         status = "enabled" if row["enabled"] else "disabled"
@@ -97,26 +82,22 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
     service = LocalStreamService(db)
     stream_type = args.type
     if not stream_type:
-        print("Stream types: (1) email  (2) rss  (3) bluesky  (4) sitemap_news")
+        print("Stream types: (1) rss  (2) bluesky  (3) sitemap_news")
         choice = _prompt("Choose stream type", default="1")
         stream_type = {
-            "1": "email",
-            "2": "rss",
-            "3": "bluesky",
-            "4": "sitemap_news",
-            "email": "email",
+            "1": "rss",
+            "2": "bluesky",
+            "3": "sitemap_news",
             "rss": "rss",
             "bluesky": "bluesky",
             "sitemap_news": "sitemap_news",
-        }.get(choice.lower(), "email")
+        }.get(choice.lower(), "rss")
 
     name = _prompt("Stream name (e.g. 'personal', 'hn-frontpage')")
     if not name:
         raise SystemExit("Stream name is required.")
 
-    if stream_type == "email":
-        config_json = _prompt_email_stream()
-    elif stream_type == "rss":
+    if stream_type == "rss":
         config_json = _prompt_rss_stream()
     elif stream_type == "bluesky":
         config_json = BlueskyStreamConfig().model_dump_json()
@@ -132,81 +113,6 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
 
     service.add_stream(name, stream_type, config_json)
     print(f"\nAdded stream {name!r} (type={stream_type}).")
-
-
-def _prompt_email_stream() -> str:
-    print("Email providers: (1) imap  (2) gmail_api  (3) msgraph")
-    choice = _prompt("Choose provider", default="1")
-    provider = {
-        "1": MailProvider.IMAP,
-        "imap": MailProvider.IMAP,
-        "2": MailProvider.GMAIL_API,
-        "gmail_api": MailProvider.GMAIL_API,
-        "3": MailProvider.MSGRAPH,
-        "msgraph": MailProvider.MSGRAPH,
-    }.get(choice.lower())
-    if not provider:
-        raise SystemExit(f"Unknown provider: {choice}")
-
-    if provider == MailProvider.IMAP:
-        config = _prompt_imap_config()
-    elif provider == MailProvider.GMAIL_API:
-        config = _prompt_gmail_config()
-    else:
-        config = _prompt_msgraph_config()
-
-    return config.model_dump_json()
-
-
-def _prompt_imap_config() -> MailAccountConfig:
-    server = _prompt("IMAP server (e.g. imap.gmail.com)")
-    port = int(_prompt("IMAP port", default="993"))
-    username = _prompt("Username (email address)")
-    password = _prompt_secret("App password")
-    if not server or not username or not password:
-        raise SystemExit("server, username, and password are required.")
-    return MailAccountConfig(
-        provider=MailProvider.IMAP,
-        server=server,
-        port=port,
-        auth=AuthConfig(method=AuthMethod.PASSWORD, username=username, password=password),
-        settings=_prompt_account_settings(),
-    )
-
-
-def _prompt_gmail_config() -> MailAccountConfig:
-    print("\nPaste the path to the Google OAuth client JSON (from GCP Console).")
-    client_config_json = _read_file_content("OAuth client JSON")
-    try:
-        json.loads(client_config_json)
-    except Exception as exc:
-        raise SystemExit(f"Invalid JSON: {exc}")
-    return MailAccountConfig(
-        provider=MailProvider.GMAIL_API,
-        auth=AuthConfig(method=AuthMethod.OAUTH2, client_config_json=client_config_json),
-        settings=_prompt_account_settings(),
-    )
-
-
-def _prompt_msgraph_config() -> MailAccountConfig:
-    client_id = _prompt("Azure client ID")
-    tenant_id = _prompt("Azure tenant ID (or 'common')", default="common")
-    if not client_id:
-        raise SystemExit("client_id is required.")
-    return MailAccountConfig(
-        provider=MailProvider.MSGRAPH,
-        auth=AuthConfig(method=AuthMethod.OAUTH2, client_id=client_id, tenant_id=tenant_id),
-        settings=_prompt_account_settings(),
-    )
-
-
-def _prompt_account_settings() -> AccountSettings:
-    process_only_unread = _prompt("Process only unread? [Y/n]", default="Y").lower() not in {"n", "no", "false", "0"}
-    max_lookback = int(_prompt("Max lookback hours", default="24"))
-    return AccountSettings(
-        process_only_unread=process_only_unread,
-        max_lookback_hours=max_lookback,
-    )
 
 
 def _prompt_rss_stream() -> str:
@@ -294,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     stream_sub.add_parser("list").set_defaults(func=cmd_stream_list)
 
     add = stream_sub.add_parser("add")
-    add.add_argument("--type", choices=["email", "rss", "bluesky", "sitemap_news"], help="Stream type")
+    add.add_argument("--type", choices=["rss", "bluesky", "sitemap_news"], help="Stream type")
     add.set_defaults(func=cmd_stream_add)
 
     rm = stream_sub.add_parser("remove")

@@ -20,10 +20,6 @@ class LocalSettings:
     LLM_API_KEY: Optional[str] = None
     LLM_MODEL: str = "gpt-5.4"
 
-    RESEND_API_KEY: Optional[str] = None
-    EMAIL_FROM_ADDRESS: Optional[str] = None
-    EMAIL_FROM_NAME: str = ""
-
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_BOT_USERNAME: Optional[str] = None
 
