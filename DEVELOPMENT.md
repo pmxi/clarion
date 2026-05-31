@@ -26,3 +26,7 @@ uv run hf auth login
 
 ssh -L 5433:localhost:5432 oracle
 oracle is the ssh host where the postgres db lives.
+
+Rename database tables to use singular nouns and to be more clear.
+
+Collapse the hosted / local split and make MVP.
