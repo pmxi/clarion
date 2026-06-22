@@ -19,18 +19,19 @@ access to that host as `ubuntu`.
 The web UI listens on **`127.0.0.1:8765`** — bound to localhost only.
 Reach it from your laptop via an SSH tunnel (below).
 
-## systemd unit
+## systemd units
 
-User-scoped (`systemctl --user`), not system-scoped, because it runs as
-the `ubuntu` user. The unit lives at
-`~/.config/systemd/user/clarion.service` on oracle and contains:
+The collector and the web UI are now **separate processes**, so they run as
+two user-scoped units (`systemctl --user`, as the `ubuntu` user).
+
+`~/.config/systemd/user/clarion.service` — the collector:
 
 ```ini
 [Service]
 Type=simple
 WorkingDirectory=/home/ubuntu/clarion
 EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
-ExecStart=/home/ubuntu/clarion/.venv/bin/clarion web --host 127.0.0.1 --port 8765
+ExecStart=/home/ubuntu/clarion/.venv/bin/clarion run
 Restart=always
 RestartSec=5
 LimitNOFILE=131072
@@ -38,10 +39,23 @@ MemoryHigh=3G
 MemoryMax=4G
 ```
 
-`MemoryMax=4G` is a guardrail — under sustained classification load
-the process slowly grows memory; systemd OOM-kills past 4G and
-`Restart=always` brings it back. Per-stream `_seen` sets are in-memory
-only and rebuild on first poll after a restart.
+`~/.config/systemd/user/clarion-web.service` — the web UI:
+
+```ini
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/clarion
+EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
+ExecStart=/home/ubuntu/clarion/.venv/bin/clarion-web
+Restart=always
+RestartSec=5
+```
+
+`MemoryMax=4G` on the collector is a guardrail — under sustained ingest the
+process slowly grows memory; systemd OOM-kills past 4G and `Restart=always`
+brings it back. Per-stream `_seen` sets are in-memory only and rebuild on
+first poll after a restart. The web UI is lightweight (stateless reads) and
+needs no memory cap.
 
 ## Postgres
 

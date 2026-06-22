@@ -20,7 +20,6 @@ from clarion.local.services.sources_materialize import (
     materialize,
 )
 from clarion.local.services.streams import LocalStreamService
-from clarion.local.web.app import run as run_web
 
 
 def _open_db() -> LocalDatabase:
@@ -40,7 +39,7 @@ def cmd_init(_args: argparse.Namespace) -> None:
     print("\nLocal setup complete.")
     print("  - Add an RSS feed: clarion stream add --type rss")
     print("  - Start monitor:   clarion run")
-    print("  - Open web UI:     clarion web")
+    print("  - Open web UI:     clarion-web")
     print("  - Drive test load: clarion dev firehose --rate 20 --count 200")
 
 
@@ -134,10 +133,6 @@ def cmd_run(_args: argparse.Namespace) -> None:
     asyncio.run(LocalMonitor(db).run())
 
 
-def cmd_web(args: argparse.Namespace) -> None:
-    run_web(host=args.host, port=args.port, debug=args.debug)
-
-
 def cmd_dev_firehose(args: argparse.Namespace) -> None:
     count = None if args.count == 0 else args.count
     config = FirehoseConfig(
@@ -165,12 +160,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init", help="Configure the local runtime").set_defaults(func=cmd_init)
     sub.add_parser("run", help="Start the local supervisor").set_defaults(func=cmd_run)
-
-    web = sub.add_parser("web", help="Start the local web UI")
-    web.add_argument("--host", default="127.0.0.1")
-    web.add_argument("--port", type=int, default=8765)
-    web.add_argument("--debug", action="store_true")
-    web.set_defaults(func=cmd_web)
 
     stream = sub.add_parser("stream", help="Manage local data streams")
     stream_sub = stream.add_subparsers(dest="stream_cmd", required=True)
