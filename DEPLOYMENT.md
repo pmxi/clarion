@@ -132,16 +132,23 @@ systemctl --user restart clarion.service
 
 ### Standard deploy
 
+`/home/ubuntu/clarion` is a git checkout of `origin/master` with an editable
+install (`uv sync`) into `.venv`. `.venv/`, `logs/`, and the env file (which
+lives outside the tree, under `~/.config/clarion/`) are untracked, so a hard
+reset is safe.
+
 ```bash
 ssh oracle '
   cd /home/ubuntu/clarion \
     && git fetch origin master \
     && git reset --hard origin/master \
-    && systemctl --user restart clarion.service'
+    && ~/.local/bin/uv sync --frozen \
+    && systemctl --user restart clarion.service clarion-web.service'
 ```
 
-Hot-reload picks up `stream` table changes within 30s without a restart
-— deploys are only needed for code changes.
+`uv sync` is needed whenever dependencies or entry points change; for a
+pure code edit a restart alone suffices (the install is editable).
+Hot-reload picks up `stream` table changes within 30s without a restart.
 
 ### Verifying after a deploy
 
