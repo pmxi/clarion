@@ -17,8 +17,11 @@ access to that host as `ubuntu`.
 | `/var/log/postgresql/postgresql-*.log` | Postgres logs (root/postgres reads) |
 | `/tmp/clarion-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
 
-The web UI listens on **`127.0.0.1:8765`** — bound to localhost only.
-Reach it from your laptop via an SSH tunnel (below).
+The web UI listens on **`127.0.0.1:8766`** — bound to localhost only.
+Reach it from your laptop via an SSH tunnel (below). Port/host are
+configurable via `CLARION_WEB_PORT` / `CLARION_WEB_HOST`. (Port 8765 on
+oracle belongs to the **unrelated** `email_sentinel` app — `sentinel-web`
++ `sentinel-worker`, a separate product, separate DB. Do not touch it.)
 
 ## systemd units
 
@@ -47,6 +50,7 @@ MemoryMax=4G
 Type=simple
 WorkingDirectory=/home/ubuntu/clarion
 EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
+Environment=CLARION_WEB_PORT=8766
 ExecStart=/home/ubuntu/clarion/.venv/bin/clarion-web
 Restart=always
 RestartSec=5
@@ -73,10 +77,10 @@ Runs natively on oracle, listens on `localhost:5432`. Version 18.3.
 
 ```bash
 # Open SSH tunnel — leaves running in background
-ssh -fN -L 8765:localhost:8765 oracle
+ssh -fN -L 8766:localhost:8766 oracle
 
 # Open in browser
-open http://127.0.0.1:8765/
+open http://127.0.0.1:8766/
 ```
 
 For postgres access (e.g. running a CLI like `clarion sources
@@ -90,7 +94,7 @@ ssh -fN -L 5433:localhost:5432 oracle
 export DATABASE_URL='postgresql://clarion_user:<pw>@localhost:5433/clarion'
 ```
 
-To close a tunnel: `pkill -f 'ssh -fN -L 8765'` (or the matching port).
+To close a tunnel: `pkill -f 'ssh -fN -L 8766'` (or the matching port).
 
 ## Web routes
 
@@ -157,7 +161,7 @@ ssh oracle '
   systemctl --user show clarion.service -p ActiveState,MainPID
   journalctl --user -u clarion.service --since "30 seconds ago" --no-pager \
     | grep -E "ERROR|Traceback|Supervising"
-  curl -sS -o /dev/null -w "/ HTTP %{http_code}\n" http://127.0.0.1:8765/'
+  curl -sS -o /dev/null -w "/ HTTP %{http_code}\n" http://127.0.0.1:8766/'
 ```
 
 ## Database schema

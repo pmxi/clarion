@@ -372,7 +372,11 @@ def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
 
 
 def main() -> None:
-    run()
+    import os
+
+    host = os.getenv("CLARION_WEB_HOST", "127.0.0.1")
+    port = int(os.getenv("CLARION_WEB_PORT", "8765"))
+    run(host=host, port=port)
 
 
 if __name__ == "__main__":
