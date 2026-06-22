@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from getpass import getpass
 from typing import Optional
 
 from clarion.core.streams.rss.config import RSSStreamConfig
@@ -34,23 +33,10 @@ def _prompt(label: str, default: Optional[str] = None) -> str:
     return value or (default or "")
 
 
-def _prompt_secret(label: str) -> str:
-    return getpass(f"{label}: ").strip()
-
-
 def cmd_init(_args: argparse.Namespace) -> None:
     db = _open_db()
     settings.load(db)
-    LocalSetupService(db).initialize(
-        llm_api_key=_prompt_secret("OpenAI API key (required)"),
-        llm_model=_prompt("OpenAI model", default=settings.LLM_MODEL),
-        telegram_bot_token=_prompt_secret("Telegram bot token (or blank to skip)"),
-        telegram_bot_username=_prompt("Telegram bot username (or blank)"),
-        max_lookback_hours=_prompt(
-            "Max lookback (hours)",
-            default=str(settings.MAX_LOOKBACK_HOURS),
-        ),
-    )
+    LocalSetupService(db).initialize()
     print("\nLocal setup complete.")
     print("  - Add an RSS feed: clarion stream add --type rss")
     print("  - Start monitor:   clarion run")
@@ -145,7 +131,6 @@ def cmd_sources_materialize(args: argparse.Namespace) -> None:
 def cmd_run(_args: argparse.Namespace) -> None:
     db = _open_db()
     settings.load(db)
-    settings.validate()
     asyncio.run(LocalMonitor(db).run())
 
 
@@ -160,8 +145,6 @@ def cmd_dev_firehose(args: argparse.Namespace) -> None:
         count=count,
         source_type=args.source_type,
         stream_name=args.stream_name,
-        classify_delay_ms=args.classify_delay_ms,
-        important_every=args.important_every,
     )
     target = "until interrupted" if count is None else f"for {count} items"
     print(
@@ -275,18 +258,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--stream-name",
         default="dev-firehose",
         help="Stream label shown in the dashboard (default: dev-firehose)",
-    )
-    firehose.add_argument(
-        "--classify-delay-ms",
-        type=int,
-        default=120,
-        help="Delay between received and classified events (default: 120)",
-    )
-    firehose.add_argument(
-        "--important-every",
-        type=int,
-        default=5,
-        help="Mark every Nth item as important; 0 disables important items (default: 5)",
     )
     firehose.set_defaults(func=cmd_dev_firehose)
 

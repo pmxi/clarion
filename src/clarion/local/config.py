@@ -16,15 +16,6 @@ load_dotenv()
 class LocalSettings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-    LLM_PROVIDER: str = "openai"
-    LLM_API_KEY: Optional[str] = None
-    LLM_MODEL: str = "gpt-5.4"
-
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
-    TELEGRAM_BOT_USERNAME: Optional[str] = None
-
-    MAX_LOOKBACK_HOURS: int = 24
-
     LOG_LEVEL: str = "INFO"
     LOG_DIR: str = "logs"
     DISABLE_FILE_LOGGING: bool = False
@@ -47,17 +38,6 @@ class LocalSettings:
             default = getattr(cls, key)
             target = type(default) if default is not None else str
             setattr(cls, key, _coerce(raw, target))
-
-    @classmethod
-    def validate(cls) -> bool:
-        missing = []
-        if not cls.LLM_API_KEY:
-            missing.append("LLM_API_KEY")
-        if missing:
-            raise ValueError(
-                f"Missing required local app settings: {', '.join(missing)}. Configure with 'clarion init'."
-            )
-        return True
 
 
 def _coerce(raw: str, target: type) -> Any:

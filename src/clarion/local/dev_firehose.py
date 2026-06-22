@@ -1,12 +1,11 @@
 """Synthetic local firehose for exercising the web UI.
 
-This bypasses slow upstream publishers and LLM latency by writing dashboard-
-compatible events directly into the local PostgreSQL store at a configurable rate.
+This bypasses slow upstream publishers by writing news events directly into
+the local PostgreSQL `event` table at a configurable rate.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 
@@ -40,8 +39,6 @@ class FirehoseConfig:
     count: int | None = 200
     source_type: str = "rss"
     stream_name: str = "dev-firehose"
-    classify_delay_ms: int = 120
-    important_every: int = 5
 
 
 def run_firehose(database_url: str, config: FirehoseConfig) -> int:
@@ -49,8 +46,6 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
         raise ValueError("rate must be greater than 0")
     if config.count is not None and config.count < 0:
         raise ValueError("count must be >= 0")
-    if config.classify_delay_ms < 0:
-        raise ValueError("classify_delay_ms must be >= 0")
 
     emitted = 0
     interval_seconds = 1.0 / config.rate
@@ -62,31 +57,20 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
         while config.count is None or emitted < config.count:
             started = time.perf_counter()
             item_number = emitted + 1
-            payload = _item_payload(config, item_number)
-            db.emit_live_event("item_received", json.dumps(payload))
-
-            delay_seconds = min(config.classify_delay_ms / 1000.0, interval_seconds)
-            if delay_seconds > 0:
-                time.sleep(delay_seconds)
-
-            classified_payload = dict(payload)
-            priority = _priority_for(item_number, config.important_every)
-            classified_payload.update(
-                {
-                    "priority": priority,
-                    "summary": _summary_for(payload["title"], priority),
-                    "reasoning": _reasoning_for(priority, config.source_type),
-                }
+            now = utc_now()
+            topic = _TOPICS[(item_number - 1) % len(_TOPICS)]
+            author = _AUTHORS[(item_number - 1) % len(_AUTHORS)]
+            db.insert_event(
+                source_type=config.source_type,
+                item_id=f"{config.stream_name}-{item_number:06d}",
+                stream_name=config.stream_name,
+                title=f"{topic} #{item_number}",
+                body=None,
+                url=f"https://example.test/{config.stream_name}/{item_number}",
+                author=author,
+                received_at=now,
             )
-            db.emit_live_event("item_classified", json.dumps(classified_payload))
-            db.mark_item_processed(
-                config.source_type,
-                payload["item_id"],
-                payload["title"],
-                payload["author"],
-                config.stream_name,
-            )
-            db.update_last_check_time(utc_now())
+            db.update_last_check_time(now)
 
             emitted += 1
             remaining = interval_seconds - (time.perf_counter() - started)
@@ -94,36 +78,3 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
                 time.sleep(remaining)
 
     return emitted
-
-
-def _item_payload(config: FirehoseConfig, item_number: int) -> dict[str, str]:
-    now = utc_now()
-    topic = _TOPICS[(item_number - 1) % len(_TOPICS)]
-    author = _AUTHORS[(item_number - 1) % len(_AUTHORS)]
-    return {
-        "source_type": config.source_type,
-        "item_id": f"{config.stream_name}-{item_number:06d}",
-        "title": f"{topic} #{item_number}",
-        "author": author,
-        "url": f"https://example.test/{config.stream_name}/{item_number}",
-        "stream_name": config.stream_name,
-        "received_at": now.isoformat(),
-    }
-
-
-def _priority_for(item_number: int, important_every: int) -> str:
-    if important_every > 0 and item_number % important_every == 0:
-        return "important"
-    return "normal"
-
-
-def _summary_for(title: str, priority: str) -> str:
-    if priority == "important":
-        return f"Escalate now: {title.lower()}."
-    return f"Routine update: {title.lower()}."
-
-
-def _reasoning_for(priority: str, source_type: str) -> str:
-    if priority == "important":
-        return f"Synthetic {source_type} item marked important for UI testing."
-    return f"Synthetic {source_type} item marked normal for UI testing."
