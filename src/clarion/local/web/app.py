@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import queue
 import secrets
-import threading
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -19,8 +16,6 @@ from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.time_utils import utc_now
 from clarion.local.config import settings
 from clarion.local.database import LocalDatabase
-from clarion.local.live_bus import LiveEventBus
-from clarion.local.monitor import LocalMonitor
 from clarion.local.services.preferences import LocalPreferencesService
 from clarion.local.services.runtime import LocalRuntimeService
 from clarion.local.services.streams import LocalStreamService
@@ -35,7 +30,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     _bootstrap_settings(app)
     ensure_loaded()
     app.secret_key = settings.SESSION_SECRET or "clarion-local"
-    app.extensions["live_bus"] = _maybe_start_embedded_monitor(app)
 
     def open_db() -> LocalDatabase:
         return LocalDatabase(app.config["DATABASE_URL"])
@@ -106,7 +100,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
 
     @app.route("/events/stream")
     def events_stream():
-        bus: Optional[LiveEventBus] = app.extensions.get("live_bus")
         last_id_header = request.headers.get("Last-Event-ID")
         since_param = request.args.get("since")
         try:
@@ -123,11 +116,7 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
         except (ValueError, TypeError):
             cursor = 0
 
-        generate = (
-            _sse_push_loop(app.config["DATABASE_URL"], cursor, bus)
-            if bus is not None
-            else _sse_poll_loop(app.config["DATABASE_URL"], cursor)
-        )
+        generate = _sse_poll_loop(app.config["DATABASE_URL"], cursor)
         return Response(
             stream_with_context(generate)(),
             mimetype="text/event-stream",
@@ -444,34 +433,6 @@ def _bootstrap_settings(app: Flask) -> None:
         db.close()
 
 
-def _maybe_start_embedded_monitor(app: Flask) -> Optional[LiveEventBus]:
-    if not settings.LLM_API_KEY:
-        logger.info("LLM_API_KEY not configured; skipping embedded local monitor.")
-        return None
-    import os
-
-    # Under Werkzeug's reloader the parent process re-execs a child with
-    # WERKZEUG_RUN_MAIN=true; the parent itself never sets it. Starting the
-    # monitor in both processes spins up two Telegram long-pollers, which
-    # Telegram rejects with HTTP 409. Only run in the child (or when the
-    # reloader is off entirely).
-    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-        return None
-
-    bus = LiveEventBus()
-
-    def _run_monitor() -> None:
-        try:
-            db = LocalDatabase(app.config["DATABASE_URL"])
-            monitor = LocalMonitor(db, bus=bus)
-            asyncio.run(monitor.run())
-        except Exception as exc:
-            logger.exception("Embedded local monitor crashed: %s", exc)
-
-    threading.Thread(target=_run_monitor, name="clarion-local-monitor", daemon=True).start()
-    return bus
-
-
 def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
     """Render an event row (LEFT JOINed with classification) into the
     (event_type, payload_json) pair the SSE client expects. If the row
@@ -498,47 +459,6 @@ def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
     else:
         event_type = "item_received"
     return event_type, json.dumps(payload, default=str)
-
-
-def _sse_push_loop(database_url: str, cursor: int, bus: LiveEventBus):
-    def generate():
-        nonlocal cursor
-        yield "retry: 3000\n: connected\n\n"
-        q = bus.subscribe()
-        heartbeat_countdown = 30
-        try:
-            db = LocalDatabase(database_url)
-            try:
-                while True:
-                    rows = db.fetch_events_since(cursor, limit=200)
-                    if rows:
-                        for row in rows:
-                            cursor = int(row["id"])
-                            event_type, payload = _row_to_sse_payload(row)
-                            yield _sse_frame(cursor, event_type, payload)
-                        heartbeat_countdown = 30
-                        continue
-
-                    try:
-                        event = q.get(timeout=0.5)
-                    except queue.Empty:
-                        heartbeat_countdown -= 1
-                        if heartbeat_countdown <= 0:
-                            yield ": keepalive\n\n"
-                            heartbeat_countdown = 30
-                        continue
-
-                    if event.event_id <= cursor:
-                        continue
-                    cursor = event.event_id
-                    yield _sse_frame(cursor, event.event_type, event.payload_json)
-                    heartbeat_countdown = 30
-            finally:
-                db.close()
-        finally:
-            bus.unsubscribe(q)
-
-    return generate
 
 
 def _sse_poll_loop(database_url: str, cursor: int):

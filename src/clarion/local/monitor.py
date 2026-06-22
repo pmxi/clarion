@@ -24,7 +24,6 @@ from clarion.core.processing import ProcessingObserver, ProcessedItemStore
 from clarion.core.streams import Item, Stream, build_stream, ensure_loaded
 from clarion.local.config import settings
 from clarion.local.database import LocalDatabase
-from clarion.local.live_bus import LiveEvent, LiveEventBus
 from clarion.local.scorer import BatchScorer, LocalTextScorer
 from clarion.local.services.preferences import LocalPreferences
 from clarion.local.services.streams import LocalStreamService
@@ -53,11 +52,9 @@ class LocalMonitor:
     def __init__(
         self,
         database: LocalDatabase,
-        bus: Optional[LiveEventBus] = None,
     ):
         ensure_loaded()
         self.db = database
-        self.bus = bus
         self.stream_service = LocalStreamService(database)
         self.classifier = OpenAIItemClassifier(
             api_key=settings.LLM_API_KEY or "",
@@ -224,12 +221,11 @@ class LocalMonitor:
             try:
                 preferences = self._get_preferences()
                 if self._observer is None:
-                    self._observer = _LocalProcessingObserver(self.db, self.bus)
+                    self._observer = _LocalProcessingObserver(self.db)
                 processor = LocalItemProcessor(
                     db=self.db,
                     classifier=self.classifier,
                     preferences=preferences,
-                    bus=self.bus,
                     scorer=self.scorer,
                     observer=self._observer,
                 )
@@ -330,7 +326,6 @@ class LocalItemProcessor:
         db: LocalDatabase,
         classifier: OpenAIItemClassifier,
         preferences: LocalPreferences,
-        bus: Optional[LiveEventBus],
         scorer: Optional[BatchScorer] = None,
         observer: Optional["_LocalProcessingObserver"] = None,
     ):
@@ -344,7 +339,7 @@ class LocalItemProcessor:
             )
         # Reuse a shared observer if provided (supervisor's batching writer);
         # otherwise build a private one (legacy callers).
-        self.observer = observer or _LocalProcessingObserver(db, bus)
+        self.observer = observer or _LocalProcessingObserver(db)
         self.processor = ItemProcessor(
             classifier=classifier,
             store=_LocalProcessedItemStore(db),
@@ -424,9 +419,8 @@ class _LocalProcessingObserver(ProcessingObserver):
     BATCH_INTERVAL_S = 0.25
     QUEUE_MAX = 50_000
 
-    def __init__(self, db: LocalDatabase, bus: Optional[LiveEventBus]):
+    def __init__(self, db: LocalDatabase):
         self.db = db
-        self.bus = bus
         # The queue holds (Item, score) tuples. We resolve to event_id
         # only after the bulk insert returns.
         self._queue: "asyncio.Queue[tuple[Item, Optional[float]]]" = asyncio.Queue(maxsize=self.QUEUE_MAX)
@@ -482,15 +476,6 @@ class _LocalProcessingObserver(ProcessingObserver):
             reasoning=c.reasoning,
             model=_model_name_for_log(),
         )
-        if self.bus is not None:
-            payload = _classification_payload(ev.item, c)
-            self.bus.publish(
-                LiveEvent(
-                    event_id=event_id,
-                    event_type="item_classified",
-                    payload_json=_safe_json(payload),
-                )
-            )
 
     def _record_failure(self, ev: ProcessingEvent) -> None:
         with self.db._lock:
@@ -523,23 +508,7 @@ class _LocalProcessingObserver(ProcessingObserver):
                     }
                     for item, score in batch
                 ]
-                ids = await asyncio.to_thread(self.db.insert_events_bulk, rows)
-                if self.bus is not None:
-                    # Bulk insert skips dedup hits; ids length may be < batch.
-                    # We don't try to correlate position-by-position — the bus
-                    # is best-effort for live UI. Just publish whatever
-                    # actually landed.
-                    n = min(len(ids), len(batch))
-                    for i in range(n):
-                        item, _score = batch[i]
-                        payload = _item_received_payload(item)
-                        self.bus.publish(
-                            LiveEvent(
-                                event_id=ids[i],
-                                event_type="item_received",
-                                payload_json=_safe_json(payload),
-                            )
-                        )
+                await asyncio.to_thread(self.db.insert_events_bulk, rows)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
