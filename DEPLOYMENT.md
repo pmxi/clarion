@@ -11,8 +11,9 @@ access to that host as `ubuntu`.
 |---|---|
 | `/home/ubuntu/clarion` | Git checkout (tracks `origin/master`) |
 | `/home/ubuntu/clarion/.venv` | uv-managed venv; `clarion` console script lives here |
-| `/home/ubuntu/.config/clarion/clarion.env` | Runtime env — holds `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, etc. (chmod 600, never check in) |
-| `/home/ubuntu/.config/systemd/user/clarion.service` | systemd user unit |
+| `/home/ubuntu/.config/clarion/clarion.env` | Runtime env — holds `DATABASE_URL` (chmod 600, never check in) |
+| `/home/ubuntu/.config/systemd/user/clarion.service` | systemd user unit — collector (`clarion run`) |
+| `/home/ubuntu/.config/systemd/user/clarion-web.service` | systemd user unit — web UI (`clarion-web`) |
 | `/var/log/postgresql/postgresql-*.log` | Postgres logs (root/postgres reads) |
 | `/tmp/clarion-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
 
@@ -97,16 +98,16 @@ To close a tunnel: `pkill -f 'ssh -fN -L 8765'` (or the matching port).
 |---|---|
 | `/` | Original dashboard (status + 2-column live feed). |
 | `/live` | Multi-source live monitor with sidebar (filter by source type + top stream), full-text search, rate counters. |
-| `/alerts` | Items classified as IMPORTANT (with summary + reasoning). |
 | `/streams` | Stream-row management — search/filter/paginate; toggle/delete. |
 | `/streams/activity` | Per-stream emission rates over a recent window. |
 | `/streams/new` | Manually add a stream. |
-| `/preferences`, `/prompt` | User notes + Telegram linking. |
 | `/events/stream` | SSE feed used by `/`, `/live`. |
 
 ## Common management operations
 
-All run **on oracle** (`ssh oracle` first).
+All run **on oracle** (`ssh oracle` first). These target the collector
+(`clarion.service`); the web UI is managed identically via
+`clarion-web.service`.
 
 ```bash
 # Status / health
@@ -166,12 +167,11 @@ All tables use **singular names** as of the May-2026 migration.
 | Table | Purpose |
 |---|---|
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
-| `classification` | LLM result per event (FK). Holds `priority`, `summary`, `reasoning`, `model`, `prompt_version`. |
-| `classification_failure` | Symmetric to `classification` for failed classifies. |
+| `classification`, `classification_failure` | **Legacy** — retained for the historical data classified before classification was removed. No longer written to. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
-| `app_setting`, `local_setting` | Key-value config (operator + per-user). |
-| `monitoring_state` | Daemon heartbeats (`monitoring_start_time`, `last_check_time`). |
-| `telegram_link_token` | Short-lived OTP for linking a Telegram chat. |
+| `app_setting`, `local_setting` | Key-value config. |
+| `monitoring_state` | Collector heartbeats (`monitoring_start_time`, `last_check_time`). |
+| `telegram_link_token` | **Legacy** — unused since Telegram notifications were removed. |
 | `schema_meta` | Schema-version pointer. |
 
 ### `sources` — Media Cloud catalog
@@ -231,27 +231,12 @@ restart needed. `src:*` stream names come from sitemap materialization;
 `src-feed:*` come from feed materialization. The `--prune` flag only
 touches those prefixes.
 
-## Classifier (OpenAI)
-
-- Model is configured via `app_setting.LLM_MODEL` (currently
-  `gpt-4o-mini`). Operator key is in `app_setting.LLM_API_KEY`.
-- Kill switch lives in source: `_CLASSIFICATION_DISABLED` at the top of
-  `src/clarion/local/monitor.py`. Set to `True` to make every item
-  skip the LLM call (still emits event rows).
-- Per-source skip: items with `metadata.skip_classification = True`
-  never reach the LLM. `BlueskyStream` does this because the firehose
-  is too high-volume for per-post LLM calls.
-- Concurrency cap: an `asyncio.Semaphore(48)` in
-  `OpenAIItemClassifier.classify` keeps us under tier-1 RPM limits at
-  ~1-2s latency per call.
-
 ## Things that need watching
 
 | | |
 |---|---|
-| Memory drift | Slow growth under sustained classification load — `MemoryMax=4G` + `Restart=always` is the current backstop. Restarts cost 5min of re-priming (sitemap streams skip first-poll emission). |
+| Memory drift | Slow growth under sustained ingest — `MemoryMax=4G` + `Restart=always` is the current backstop. Restarts cost 5min of re-priming (sitemap streams skip first-poll emission). |
 | `event` size | **Append-only and kept indefinitely — there is no prune.** Grows ~150–200 MB/day (~236k rows/day) at current load. Watch disk on oracle and manage capacity at the infra level (bigger volume, table partitioning, archiving). Do **not** add a time-based prune to trim it. |
-| OpenAI spend | At full Tier-A scale (~30 items/sec needing classification) the bill is meaningful. Disable via the kill switch when not actively using the classifications. |
 | Long tail of streams | The single-process asyncio supervisor handles ~750-1500 streams comfortably. Beyond that, CPU pegs and memory grows. Going wider needs a worker-pool refactor. |
 | Postgres backups | Not yet wired up — and now load-bearing: `event` is append-only and kept indefinitely, so its full history is **irreplaceable** if the DB is lost. The `sources.*` catalog is re-derivable from Media Cloud (hours to re-walk); `stream` and `app_setting` are also irreplaceable. Wiring up backups is a real TODO. |
 
@@ -274,7 +259,6 @@ ssh oracle 'sudo -nu postgres psql -d clarion'
 -- Live system snapshot
 SELECT
   (SELECT COUNT(*) FROM event)              AS events,
-  (SELECT COUNT(*) FROM classification)     AS classifications,
   (SELECT COUNT(*) FROM stream)             AS streams,
   (SELECT MAX(observed_at) FROM event)      AS most_recent;
 
@@ -291,9 +275,8 @@ FROM event
 WHERE observed_at > NOW() - INTERVAL '10 minutes'
 GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
 
--- Important alerts
-SELECT e.title, e.url, c.summary, c.classified_at
-FROM classification c JOIN event e ON e.id = c.event_id
-WHERE c.priority = 'important'
-ORDER BY c.classified_at DESC LIMIT 20;
+-- Most recent items
+SELECT source_type, stream_name, title, url, observed_at
+FROM event
+ORDER BY observed_at DESC LIMIT 20;
 ```

@@ -1,15 +1,16 @@
 # Clarion
 > News monitoring that finds the signal
 
-Clarion monitors news sources, classifies new items, and alerts the user when
-something important happens.
+Clarion collects news at scale and stores it in an append-only event log.
 
-The active runtime can poll RSS/Atom feeds and publisher news sitemaps, ingest
-the Bluesky firehose, and materialize large source lists from the Media Cloud
-catalog. Incoming items flow through a classifier and appear in a live web
-dashboard. Important items can trigger Telegram notifications.
+The active runtime polls RSS/Atom feeds and publisher news sitemaps, and
+materializes large source lists from the Media Cloud catalog. Incoming items
+are written to Postgres and appear in a live web dashboard.
 
-Classification criteria are plain-English notes you control.
+It is split into two processes that share only the Postgres database:
+- **`clarion`** — the headless collector (one task per stream).
+- **`clarion-web`** — a separate web UI / control plane that reads the data
+  and manages stream config.
 
 ## Installation
 
@@ -31,12 +32,9 @@ uv sync
 uv run clarion init
 ```
 
-You'll be asked for:
-- **OpenAI API key** (required) — from
-  [platform.openai.com](https://platform.openai.com/api-keys)
-- **Telegram bot** (optional) — create one via
-  [`@BotFather`](https://t.me/BotFather), paste the token + bot username
-- **Monitoring preferences** — poll interval, max lookback hours
+This initializes runtime settings in the database (e.g. a web session
+secret). The only thing you must provide yourself is `DATABASE_URL` (see
+[Configuration](#configuration)).
 
 Single-user; there is no app-level login.
 
