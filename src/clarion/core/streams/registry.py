@@ -64,8 +64,6 @@ def _register_builtins() -> None:
     imports until first call to avoid circular refs at module load."""
     if _REGISTRY:
         return
-    from clarion.core.streams.bluesky.config import BlueskyStreamConfig
-    from clarion.core.streams.bluesky.stream import BlueskyStream
     from clarion.core.streams.rss.config import RSSStreamConfig
     from clarion.core.streams.rss.stream import RSSStream
     from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
@@ -76,13 +74,6 @@ def _register_builtins() -> None:
             stream_type="rss",
             config_cls=RSSStreamConfig,
             stream_cls=RSSStream,
-        )
-    )
-    register(
-        StreamSpec(
-            stream_type="bluesky",
-            config_cls=BlueskyStreamConfig,
-            stream_cls=BlueskyStream,
         )
     )
     register(

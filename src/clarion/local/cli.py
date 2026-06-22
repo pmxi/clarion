@@ -8,7 +8,6 @@ import sys
 from getpass import getpass
 from typing import Optional
 
-from clarion.core.streams.bluesky.config import BlueskyStreamConfig
 from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
 from clarion.local.config import settings
@@ -82,14 +81,12 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
     service = LocalStreamService(db)
     stream_type = args.type
     if not stream_type:
-        print("Stream types: (1) rss  (2) bluesky  (3) sitemap_news")
+        print("Stream types: (1) rss  (2) sitemap_news")
         choice = _prompt("Choose stream type", default="1")
         stream_type = {
             "1": "rss",
-            "2": "bluesky",
-            "3": "sitemap_news",
+            "2": "sitemap_news",
             "rss": "rss",
-            "bluesky": "bluesky",
             "sitemap_news": "sitemap_news",
         }.get(choice.lower(), "rss")
 
@@ -99,8 +96,6 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
 
     if stream_type == "rss":
         config_json = _prompt_rss_stream()
-    elif stream_type == "bluesky":
-        config_json = BlueskyStreamConfig().model_dump_json()
     elif stream_type == "sitemap_news":
         sitemap_url = _prompt("Sitemap URL (e.g. https://www.bloomberg.com/sitemaps/news/latest.xml)")
         publication = _prompt("Publication display name", default=name)
@@ -200,7 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
     stream_sub.add_parser("list").set_defaults(func=cmd_stream_list)
 
     add = stream_sub.add_parser("add")
-    add.add_argument("--type", choices=["rss", "bluesky", "sitemap_news"], help="Stream type")
+    add.add_argument("--type", choices=["rss", "sitemap_news"], help="Stream type")
     add.set_defaults(func=cmd_stream_add)
 
     rm = stream_sub.add_parser("remove")
