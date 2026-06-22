@@ -95,12 +95,3 @@ Clarion uses PostgreSQL for the active single-user runtime. Configure it with
 ```bash
 export DATABASE_URL=postgresql://clarion_user:REDACTED@localhost:5433/clarion
 ```
-
----
-
-## Multi-tenant runtime
-
-The repo also includes a separate multi-tenant runtime (`clarion-hosted`)
-with Google OAuth, per-user storage, and a worker/web split. It is **not in
-active development** — use the single-user setup above unless you have a
-reason to dig into the hosted code.

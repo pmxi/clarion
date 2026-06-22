@@ -11,8 +11,6 @@ Figure out Instagram scraping.
 
 ## Clarion split follow-ups
 
-- Remove the inactive hosted runtime or define its future. Keeping it duplicates
-  the web app, stream service, monitor, preferences, and Telegram listener.
 - Add a one-time database cleanup for legacy `email` stream rows and obsolete
   `RESEND_*`, `EMAIL_FROM_*`, and `EMAIL_NOTIFICATION_TO` settings.
 - Migrate the live `oracle` checkout, systemd unit, environment path, Postgres
