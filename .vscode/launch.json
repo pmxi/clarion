@@ -5,11 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Clarion Monitor",
+            "name": "Clarion Collector",
             "type": "debugpy",
             "request": "launch",
             "module": "clarion.local.cli",
-            "args": ["web"],
+            "args": ["run"],
+            "justMyCode": true,
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Clarion Web",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "clarion_web.app",
+            "args": [],
             "justMyCode": true,
             "console": "integratedTerminal",
             "env": {

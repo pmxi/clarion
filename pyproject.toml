@@ -4,24 +4,17 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "pydantic>=2.0.0",
-    "openai>=1.70.0",
     "psycopg[binary]>=3.2.0",
     "python-dotenv>=1.0.1",
     "requests==2.31.0",
     "flask>=3.0.0",
-    "authlib>=1.3.0",
     "feedparser>=6.0.11",
     "aiohttp>=3.10",
-    "scikit-learn>=1.8.0",
-    "joblib>=1.5.3",
-    "sentence-transformers>=5.4.1",
 ]
 
 [project.scripts]
 clarion = "clarion.local.cli:main"
-clarion-hosted = "clarion.hosted.cli:main"
-clarion-hosted-web = "clarion.hosted.web.app:main"
-clarion-hosted-worker = "clarion.hosted.worker:main"
+clarion-web = "clarion_web.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -30,6 +23,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = [
     "src/clarion",
+    "src/clarion_web",
 ]
 
 [dependency-groups]

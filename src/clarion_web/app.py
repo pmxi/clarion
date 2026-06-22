@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import queue
-import secrets
-import threading
 import time
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from flask import Flask, Response, abort, redirect, render_template, request, stream_with_context, url_for
+from flask import Flask, Response, redirect, render_template, request, stream_with_context, url_for
 
 from clarion.core.logging_config import get_logger
 from clarion.core.streams import ensure_loaded
@@ -19,9 +14,6 @@ from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.time_utils import utc_now
 from clarion.local.config import settings
 from clarion.local.database import LocalDatabase
-from clarion.local.live_bus import LiveEventBus
-from clarion.local.monitor import LocalMonitor
-from clarion.local.services.preferences import LocalPreferencesService
 from clarion.local.services.runtime import LocalRuntimeService
 from clarion.local.services.streams import LocalStreamService
 
@@ -35,7 +27,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     _bootstrap_settings(app)
     ensure_loaded()
     app.secret_key = settings.SESSION_SECRET or "clarion-local"
-    app.extensions["live_bus"] = _maybe_start_embedded_monitor(app)
 
     def open_db() -> LocalDatabase:
         return LocalDatabase(app.config["DATABASE_URL"])
@@ -49,64 +40,8 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
             db.close()
         return render_template("dashboard.html", **snapshot)
 
-    @app.route("/preferences")
-    def preferences_page():
-        db = open_db()
-        try:
-            prefs = LocalPreferencesService(db).load()
-        finally:
-            db.close()
-        return render_template(
-            "preferences.html",
-            telegram_chat_id=prefs.TELEGRAM_CHAT_ID,
-            telegram_bot_username=settings.TELEGRAM_BOT_USERNAME,
-        )
-
-    @app.route("/preferences/telegram/link", methods=["POST"])
-    def telegram_link_start():
-        if not settings.TELEGRAM_BOT_USERNAME:
-            abort(500, "TELEGRAM_BOT_USERNAME not configured")
-        token = secrets.token_urlsafe(24)
-        expires = utc_now() + timedelta(minutes=10)
-        db = open_db()
-        try:
-            db.create_telegram_link_token(token, expires)
-        finally:
-            db.close()
-        return redirect(f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}?start={token}")
-
-    @app.route("/preferences/telegram/unlink", methods=["POST"])
-    def telegram_unlink():
-        db = open_db()
-        try:
-            LocalPreferencesService(db).clear_telegram_chat_id()
-        finally:
-            db.close()
-        return redirect(url_for("preferences_page"))
-
-    @app.route("/prompt", methods=["GET", "POST"])
-    def prompt_page():
-        db = open_db()
-        try:
-            service = LocalPreferencesService(db)
-            if request.method == "POST":
-                service.save_classification_notes(
-                    request.form.get("CLASSIFICATION_NOTES", "")
-                )
-                return redirect(url_for("prompt_page", saved=1))
-            notes = service.load().CLASSIFICATION_NOTES
-        finally:
-            db.close()
-        return render_template(
-            "prompt.html",
-            notes=notes,
-            base_prompt=_base_prompt_preview(),
-            saved=request.args.get("saved") == "1",
-        )
-
     @app.route("/events/stream")
     def events_stream():
-        bus: Optional[LiveEventBus] = app.extensions.get("live_bus")
         last_id_header = request.headers.get("Last-Event-ID")
         since_param = request.args.get("since")
         try:
@@ -123,11 +58,7 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
         except (ValueError, TypeError):
             cursor = 0
 
-        generate = (
-            _sse_push_loop(app.config["DATABASE_URL"], cursor, bus)
-            if bus is not None
-            else _sse_poll_loop(app.config["DATABASE_URL"], cursor)
-        )
+        generate = _sse_poll_loop(app.config["DATABASE_URL"], cursor)
         return Response(
             stream_with_context(generate)(),
             mimetype="text/event-stream",
@@ -142,74 +73,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     def live_page():
         """Real-time multi-source traffic monitor."""
         return render_template("live.html")
-
-    @app.route("/alerts")
-    def alerts_page():
-        """Recent items the classifier flagged as IMPORTANT."""
-        try:
-            limit = min(max(int(request.args.get("limit", "50")), 5), 500)
-        except (TypeError, ValueError):
-            limit = 50
-        priority_filter = request.args.get("priority", "important")
-        if priority_filter not in ("important", "normal", "all"):
-            priority_filter = "important"
-
-        db = open_db()
-        try:
-            with db.conn.cursor() as cur:
-                where_pri = "" if priority_filter == "all" else (
-                    "AND c.priority = %s"
-                )
-                params: list[Any] = []
-                if priority_filter != "all":
-                    params.append(priority_filter)
-                params.append(limit)
-                cur.execute(
-                    f"""
-                    SELECT
-                        e.id,
-                        c.classified_at        AS created_at,
-                        c.priority             AS priority,
-                        e.source_type          AS source_type,
-                        e.stream_name          AS stream_name,
-                        e.title                AS title,
-                        e.url                  AS url,
-                        c.summary              AS summary,
-                        c.reasoning            AS reasoning
-                    FROM classification c
-                    JOIN event e ON e.id = c.event_id
-                    WHERE TRUE {where_pri}
-                    ORDER BY c.classified_at DESC
-                    LIMIT %s
-                    """,
-                    params,
-                )
-                rows = cur.fetchall()
-
-                cur.execute(
-                    "SELECT priority, COUNT(*) AS c FROM classification GROUP BY 1"
-                )
-                counts = {
-                    (r["priority"] if isinstance(r, dict) else r[0]):
-                    (r["c"] if isinstance(r, dict) else r[1])
-                    for r in cur.fetchall()
-                }
-        finally:
-            db.close()
-
-        items = [dict(r) if isinstance(r, dict) else {
-            "id": r[0], "created_at": r[1], "priority": r[2],
-            "source_type": r[3], "stream_name": r[4],
-            "title": r[5], "url": r[6], "summary": r[7], "reasoning": r[8],
-        } for r in rows]
-
-        return render_template(
-            "alerts.html",
-            items=items,
-            priority_filter=priority_filter,
-            limit=limit,
-            counts=counts,
-        )
 
     @app.route("/streams/activity")
     def streams_activity():
@@ -444,34 +307,6 @@ def _bootstrap_settings(app: Flask) -> None:
         db.close()
 
 
-def _maybe_start_embedded_monitor(app: Flask) -> Optional[LiveEventBus]:
-    if not settings.LLM_API_KEY:
-        logger.info("LLM_API_KEY not configured; skipping embedded local monitor.")
-        return None
-    import os
-
-    # Under Werkzeug's reloader the parent process re-execs a child with
-    # WERKZEUG_RUN_MAIN=true; the parent itself never sets it. Starting the
-    # monitor in both processes spins up two Telegram long-pollers, which
-    # Telegram rejects with HTTP 409. Only run in the child (or when the
-    # reloader is off entirely).
-    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-        return None
-
-    bus = LiveEventBus()
-
-    def _run_monitor() -> None:
-        try:
-            db = LocalDatabase(app.config["DATABASE_URL"])
-            monitor = LocalMonitor(db, bus=bus)
-            asyncio.run(monitor.run())
-        except Exception as exc:
-            logger.exception("Embedded local monitor crashed: %s", exc)
-
-    threading.Thread(target=_run_monitor, name="clarion-local-monitor", daemon=True).start()
-    return bus
-
-
 def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
     """Render an event row (LEFT JOINed with classification) into the
     (event_type, payload_json) pair the SSE client expects. If the row
@@ -498,47 +333,6 @@ def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
     else:
         event_type = "item_received"
     return event_type, json.dumps(payload, default=str)
-
-
-def _sse_push_loop(database_url: str, cursor: int, bus: LiveEventBus):
-    def generate():
-        nonlocal cursor
-        yield "retry: 3000\n: connected\n\n"
-        q = bus.subscribe()
-        heartbeat_countdown = 30
-        try:
-            db = LocalDatabase(database_url)
-            try:
-                while True:
-                    rows = db.fetch_events_since(cursor, limit=200)
-                    if rows:
-                        for row in rows:
-                            cursor = int(row["id"])
-                            event_type, payload = _row_to_sse_payload(row)
-                            yield _sse_frame(cursor, event_type, payload)
-                        heartbeat_countdown = 30
-                        continue
-
-                    try:
-                        event = q.get(timeout=0.5)
-                    except queue.Empty:
-                        heartbeat_countdown -= 1
-                        if heartbeat_countdown <= 0:
-                            yield ": keepalive\n\n"
-                            heartbeat_countdown = 30
-                        continue
-
-                    if event.event_id <= cursor:
-                        continue
-                    cursor = event.event_id
-                    yield _sse_frame(cursor, event.event_type, event.payload_json)
-                    heartbeat_countdown = 30
-            finally:
-                db.close()
-        finally:
-            bus.unsubscribe(q)
-
-    return generate
 
 
 def _sse_poll_loop(database_url: str, cursor: int):
@@ -572,16 +366,6 @@ def _sse_frame(event_id: int, event_type: str, payload_json: str) -> str:
     return f"id: {event_id}\nevent: {event_type}\ndata: {payload_json}\n\n"
 
 
-def _base_prompt_preview() -> str:
-    return (
-        "You are a classification assistant. The user subscribes to several "
-        "news and social information streams and wants to be alerted only to "
-        "the items that genuinely matter.\n\n"
-        "For RSS items, IMPORTANT means: major breaking news with real "
-        "consequences, security advisories, releases the user cares about."
-    )
-
-
 def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
     app = create_app(debug=debug)
     app.run(host=host, port=port, debug=debug)
@@ -589,3 +373,7 @@ def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
 
 def main() -> None:
     run()
+
+
+if __name__ == "__main__":
+    main()

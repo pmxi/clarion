@@ -372,32 +372,6 @@ class LocalDatabase:
                 (format_iso_datetime(timestamp),),
             )
 
-    # ----- telegram_link_token ------------------------------------------
-
-    def create_telegram_link_token(self, token: str, expires_at: datetime) -> None:
-        with self._lock:
-            self.conn.execute(
-                "INSERT INTO telegram_link_token (token, expires_at) VALUES (%s, %s)",
-                (token, expires_at),
-            )
-
-    def consume_telegram_link_token(self, token: str) -> bool:
-        with self._lock:
-            row = self.conn.execute(
-                "SELECT expires_at FROM telegram_link_token WHERE token=%s", (token,)
-            ).fetchone()
-            if row is None:
-                return False
-            self.conn.execute("DELETE FROM telegram_link_token WHERE token=%s", (token,))
-            return _parse_datetime(row["expires_at"]) >= utc_now()
-
-    def purge_expired_telegram_link_tokens(self) -> int:
-        with self._lock:
-            cur = self.conn.execute(
-                "DELETE FROM telegram_link_token WHERE expires_at < NOW()"
-            )
-            return cur.rowcount
-
     # ----- lifecycle ----------------------------------------------------
 
     def close(self) -> None:

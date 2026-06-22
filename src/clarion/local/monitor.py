@@ -1,72 +1,42 @@
-"""Async supervisor for the local single-user runtime."""
+"""Async supervisor for the local single-user runtime.
+
+Supervises one task per enabled stream, hot-reloads the stream set from the
+DB, and persists every yielded item into the append-only `event` table via a
+batched writer. Pure collection — no classification, scoring, or notify.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import signal
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    InternalServerError,
-    RateLimitError,
-)
-
 from clarion.core.logging_config import get_logger
-from clarion.core import ItemProcessor, OpenAIItemClassifier, ProcessingEvent
-from clarion.core.notify import TelegramItemNotifier, TelegramNotifier
-from clarion.core.processing import ProcessingObserver, ProcessedItemStore
+from clarion.core import ProcessingEvent
+from clarion.core.processing import ProcessingObserver
 from clarion.core.streams import Item, Stream, build_stream, ensure_loaded
-from clarion.local.config import settings
-from clarion.local.database import LocalDatabase
-from clarion.local.live_bus import LiveEvent, LiveEventBus
-from clarion.local.scorer import BatchScorer, LocalTextScorer
-from clarion.local.services.preferences import LocalPreferences
-from clarion.local.services.streams import LocalStreamService
-from clarion.local.telegram_bot import start_in_thread as start_telegram_listener
 from clarion.core.time_utils import utc_now
+from clarion.local.database import LocalDatabase
+from clarion.local.services.streams import LocalStreamService
 
 logger = get_logger("clarion.local.monitor")
 
 _RESTART_DELAY_SECONDS = 30
 _STREAM_REFRESH_SECONDS = 30
 # The event table is append-only and intentionally kept indefinitely — we
-# never prune it. It grows fast under firehose traffic (~1k/s at full Tier-A
-# scale), so capacity is managed at the infrastructure level (bigger volume,
-# table partitioning, archiving), NOT by deleting history. Do not reintroduce
-# a time-based prune here: a previous one silently failed for weeks, and
-# "fixing" it would have deleted everything older than its cutoff.
-
-# Global classification kill switch. When True, route everything through
-# the no-LLM fast path (just emit item_received). Individual sources can
-# still opt out per-item via item.metadata['skip_classification'] = True
-# (BlueskyStream does this — too high-volume for per-item LLM calls).
-_CLASSIFICATION_DISABLED = True
+# never prune it. It grows fast under high-volume traffic, so capacity is
+# managed at the infrastructure level (bigger volume, table partitioning,
+# archiving), NOT by deleting history. Do not reintroduce a time-based prune
+# here: a previous one silently failed for weeks, and "fixing" it would have
+# deleted everything older than its cutoff.
 
 
 class LocalMonitor:
-    def __init__(
-        self,
-        database: LocalDatabase,
-        bus: Optional[LiveEventBus] = None,
-    ):
+    def __init__(self, database: LocalDatabase):
         ensure_loaded()
         self.db = database
-        self.bus = bus
         self.stream_service = LocalStreamService(database)
-        self.classifier = OpenAIItemClassifier(
-            api_key=settings.LLM_API_KEY or "",
-            model=settings.LLM_MODEL,
-        )
-        local_scorer = LocalTextScorer.maybe_load(Path("artifacts/classifier-v1.joblib"))
-        self.scorer: Optional[BatchScorer] = (
-            BatchScorer(local_scorer) if local_scorer is not None else None
-        )
         self._shutdown = asyncio.Event()
         # Live registry of running stream tasks.  Hot-reload diffs this
         # against the DB snapshot every _STREAM_REFRESH_SECONDS.
@@ -79,34 +49,15 @@ class LocalMonitor:
         # of streams) triggers a serialized DB upsert.
         self._last_check_ts_monotonic: float = 0.0
         self._last_check_min_interval_s: float = 5.0
-        # Shared preferences cache. With thousands of streams each calling
-        # LocalPreferences.load() at startup, the supervisor would otherwise
-        # serialize through the single DB connection for ~60s.
-        self._preferences_cache: Optional[LocalPreferences] = None
-        # One batching observer shared across every stream's processor.
-        # The per-stream observer-per-processor pattern was a non-starter
-        # at thousands of streams because each instance would run its own
-        # batcher task and contend on the DB lock.
+        # One batching observer shared across every stream. The per-stream
+        # observer pattern was a non-starter at thousands of streams because
+        # each instance would run its own batcher task and contend on the
+        # DB lock.
         self._observer: Optional[_LocalProcessingObserver] = None
 
     async def run(self) -> None:
         logger.info("Starting local Clarion supervisor")
         self._install_signal_handlers()
-
-        # asyncio.to_thread uses the loop's default ThreadPoolExecutor which
-        # caps at min(32, cpu+4) by default. At thousands of streams calling
-        # to_thread for blocking OpenAI requests (~1-7s each), 32 workers
-        # bottleneck the whole pipeline. Bump to 256 for headroom.
-        import concurrent.futures
-        loop = asyncio.get_running_loop()
-        loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=256))
-        logger.info("default executor sized to 256 workers")
-
-        if settings.TELEGRAM_BOT_TOKEN:
-            start_telegram_listener(settings.require_database_url())
-
-        if self.scorer is not None:
-            await self.scorer.start()
 
         if self.db.get_monitoring_start_time() is None:
             self.db.set_monitoring_start_time(utc_now())
@@ -117,12 +68,11 @@ class LocalMonitor:
         try:
             await self._shutdown.wait()
         finally:
-            for t in (refresh_task,):
-                t.cancel()
-                try:
-                    await t
-                except (asyncio.CancelledError, Exception):
-                    pass
+            refresh_task.cancel()
+            try:
+                await refresh_task
+            except (asyncio.CancelledError, Exception):
+                pass
             await self._cancel_all()
 
     async def _refresh_loop(self) -> None:
@@ -211,28 +161,12 @@ class LocalMonitor:
         except (asyncio.CancelledError, Exception):
             pass
 
-    def _get_preferences(self) -> LocalPreferences:
-        # Cached. Refreshes only on full supervisor restart; rare relative
-        # to stream churn. (If you need live preference reloads, invalidate
-        # this from the same callback that handles the settings update.)
-        if self._preferences_cache is None:
-            self._preferences_cache = LocalPreferences.load(self.db)
-        return self._preferences_cache
-
     async def _run_stream(self, stream: Stream) -> None:
         while not self._shutdown.is_set():
             try:
-                preferences = self._get_preferences()
                 if self._observer is None:
-                    self._observer = _LocalProcessingObserver(self.db, self.bus)
-                processor = LocalItemProcessor(
-                    db=self.db,
-                    classifier=self.classifier,
-                    preferences=preferences,
-                    bus=self.bus,
-                    scorer=self.scorer,
-                    observer=self._observer,
-                )
+                    self._observer = _LocalProcessingObserver(self.db)
+                observer = self._observer
                 # Concurrency cap per stream. With many streams (700+),
                 # 64-per-stream multiplied = 45k+ items potentially in-flight.
                 # 8 is enough to overlap I/O without ballooning queue memory.
@@ -242,14 +176,13 @@ class LocalMonitor:
                 async def _handle(item: Item) -> None:
                     async with sem:
                         try:
-                            await processor.process(item)
+                            await observer.publish(
+                                ProcessingEvent(event_type="item_received", item=item)
+                            )
                         finally:
-                            # Coalesce monitoring_state.last_check_time writes.
-                            # Skip on firehose items (skip_classification) and
-                            # throttle the rest so high-rate streams don't
-                            # serialize on the connection lock.
-                            if not (item.metadata or {}).get("skip_classification"):
-                                self._maybe_update_last_check_time()
+                            # Coalesce monitoring_state.last_check_time writes so
+                            # high-rate streams don't serialize on the connection.
+                            self._maybe_update_last_check_time()
 
                 async for item in stream.items():
                     if self._shutdown.is_set():
@@ -319,84 +252,10 @@ class LocalMonitor:
                 pass
         self._stream_tasks.clear()
         self._stream_config_sig.clear()
-        if self.scorer is not None:
-            await self.scorer.stop()
 
 
-class LocalItemProcessor:
-    def __init__(
-        self,
-        *,
-        db: LocalDatabase,
-        classifier: OpenAIItemClassifier,
-        preferences: LocalPreferences,
-        bus: Optional[LiveEventBus],
-        scorer: Optional[BatchScorer] = None,
-        observer: Optional["_LocalProcessingObserver"] = None,
-    ):
-        notifier = None
-        if preferences.has_telegram() and settings.TELEGRAM_BOT_TOKEN:
-            notifier = TelegramItemNotifier(
-                TelegramNotifier(
-                    bot_token=settings.TELEGRAM_BOT_TOKEN,
-                    chat_id=preferences.TELEGRAM_CHAT_ID,
-                )
-            )
-        # Reuse a shared observer if provided (supervisor's batching writer);
-        # otherwise build a private one (legacy callers).
-        self.observer = observer or _LocalProcessingObserver(db, bus)
-        self.processor = ItemProcessor(
-            classifier=classifier,
-            store=_LocalProcessedItemStore(db),
-            notifier=notifier,
-            observer=self.observer,
-            is_retryable_classifier_error=_is_transient_classification_error,
-        )
-        self.notes = preferences.CLASSIFICATION_NOTES
-        self.scorer = scorer
-
-    async def process(self, item: Item) -> bool:
-        # Bypass when:
-        # - the item's source is firehose-class (skip_classification), or
-        # - the global kill switch is on (we're running headless w/o LLM).
-        # In both cases just emit a received event for the dashboard.
-        if _CLASSIFICATION_DISABLED or (item.metadata or {}).get("skip_classification"):
-            if self.scorer is not None:
-                try:
-                    score = await self.scorer.score(item)
-                    md = dict(item.metadata or {})
-                    md["_classifier_score"] = score
-                    item.metadata = md
-                except Exception as exc:
-                    logger.warning("scorer failed for %s: %s", item.id, exc)
-            await self.observer.publish(
-                ProcessingEvent(event_type="item_received", item=item)
-            )
-            return False
-        return await self.processor.process(item, notes=self.notes)
-
-
-class _LocalProcessedItemStore(ProcessedItemStore):
-    """Dedup is now a UNIQUE constraint on `event(source_type,item_id)`.
-    is_processed() is the existence check; mark_processed() is a no-op
-    because the row already exists by the time we get here (the
-    observer's batched insert is what created it)."""
-
-    def __init__(self, db: LocalDatabase):
-        self.db = db
-
-    async def is_processed(self, item: Item) -> bool:
-        return await asyncio.to_thread(self.db.is_item_processed, item.source_type, item.id)
-
-    async def mark_processed(self, item: Item) -> None:
-        # No-op: event row already exists. We keep the method on the
-        # Protocol because the shared ItemProcessor calls it after a
-        # successful classification, but there's nothing to write here.
-        return None
-
-
-# Bluesky bodies often duplicate the title verbatim; storing both wastes
-# space without information gain.
+# Bodies that duplicate the title verbatim waste space without information
+# gain; store them as NULL and let consumers fall back to the title.
 def _effective_body(item: Item) -> Optional[str]:
     body = (item.body or "").strip()
     title = (item.title or "").strip()
@@ -406,34 +265,23 @@ def _effective_body(item: Item) -> Optional[str]:
 
 
 class _LocalProcessingObserver(ProcessingObserver):
-    """Async batched writer for event + classification.
+    """Async batched writer for the `event` table.
 
-    item_received  -> insert into event (also creates the dedup row)
-    item_classified -> insert into classification
-    item_failed     -> insert into classification_failure
+    item_received -> insert into event (the UNIQUE (source_type, item_id)
+    constraint also gives us cross-restart dedup for free).
 
-    Item-received uses a batched multi-row INSERT through a 50k-bounded
-    asyncio.Queue. Drops events on overflow rather than blocking the
-    supervising stream tasks. Producers do not see back-pressure.
-
-    Classifications are written one at a time — they're rare relative
-    to the firehose, so batching them isn't worth the complexity.
+    Uses a batched multi-row INSERT through a 50k-bounded asyncio.Queue.
+    Drops events on overflow rather than blocking the supervising stream
+    tasks. Producers do not see back-pressure.
     """
 
     BATCH_MAX = 500
     BATCH_INTERVAL_S = 0.25
     QUEUE_MAX = 50_000
 
-    def __init__(self, db: LocalDatabase, bus: Optional[LiveEventBus]):
+    def __init__(self, db: LocalDatabase):
         self.db = db
-        self.bus = bus
-        # The queue holds (Item, score) tuples. We resolve to event_id
-        # only after the bulk insert returns.
-        self._queue: "asyncio.Queue[tuple[Item, Optional[float]]]" = asyncio.Queue(maxsize=self.QUEUE_MAX)
-        # event_id -> Item lookup used by item_classified events that
-        # arrive before our SSE bus sees the matching event_received.
-        # We don't keep this in memory long: the bus already does its
-        # own correlation client-side via item_id.
+        self._queue: "asyncio.Queue[Item]" = asyncio.Queue(maxsize=self.QUEUE_MAX)
         self._task: Optional[asyncio.Task] = None
         self._dropped: int = 0
         self._last_dropped_log: float = 0.0
@@ -443,64 +291,17 @@ class _LocalProcessingObserver(ProcessingObserver):
             self._task = asyncio.create_task(self._flush_loop(), name="event-batcher")
 
     async def publish(self, event: ProcessingEvent) -> None:
-        """Dispatch by event_type. Only item_received enters the batched
-        path; classification + failure write directly (low rate)."""
         self._ensure_started()
-        if event.event_type == "item_received":
-            score = (event.item.metadata or {}).get("_classifier_score")
-            try:
-                self._queue.put_nowait((event.item, score))
-            except asyncio.QueueFull:
-                self._dropped += 1
-                now = asyncio.get_running_loop().time()
-                if now - self._last_dropped_log > 10:
-                    logger.warning("event queue full; dropped %d so far", self._dropped)
-                    self._last_dropped_log = now
-        elif event.event_type == "item_classified" and event.classification is not None:
-            await asyncio.to_thread(self._record_classification, event)
-        elif event.event_type == "item_failed" and event.error:
-            await asyncio.to_thread(self._record_failure, event)
-
-    def _record_classification(self, ev: ProcessingEvent) -> None:
-        # Look up the event_id by (source_type, item_id). The earlier
-        # insert_event call already established the row.
-        with self.db._lock:
-            row = self.db.conn.execute(
-                "SELECT id FROM event WHERE source_type=%s AND item_id=%s",
-                (ev.item.source_type, ev.item.id),
-            ).fetchone()
-        if not row:
-            return  # the insert was dropped (e.g. dedup) — nothing to attach to
-        event_id = int(row["id"])
-        c = ev.classification
-        if c is None:
+        if event.event_type != "item_received":
             return
-        self.db.insert_classification(
-            event_id=event_id,
-            priority=c.priority.value,
-            summary=c.summary,
-            reasoning=c.reasoning,
-            model=_model_name_for_log(),
-        )
-        if self.bus is not None:
-            payload = _classification_payload(ev.item, c)
-            self.bus.publish(
-                LiveEvent(
-                    event_id=event_id,
-                    event_type="item_classified",
-                    payload_json=_safe_json(payload),
-                )
-            )
-
-    def _record_failure(self, ev: ProcessingEvent) -> None:
-        with self.db._lock:
-            row = self.db.conn.execute(
-                "SELECT id FROM event WHERE source_type=%s AND item_id=%s",
-                (ev.item.source_type, ev.item.id),
-            ).fetchone()
-        if not row:
-            return
-        self.db.insert_classification_failure(int(row["id"]), ev.error or "")
+        try:
+            self._queue.put_nowait(event.item)
+        except asyncio.QueueFull:
+            self._dropped += 1
+            now = asyncio.get_running_loop().time()
+            if now - self._last_dropped_log > 10:
+                logger.warning("event queue full; dropped %d so far", self._dropped)
+                self._last_dropped_log = now
 
     async def _flush_loop(self) -> None:
         while True:
@@ -518,37 +319,21 @@ class _LocalProcessingObserver(ProcessingObserver):
                         "url": item.url,
                         "author": item.author or None,
                         "received_at": item.received_at,
-                        "score": score,
+                        "score": None,
                         "metadata": _filter_metadata(item.metadata),
                     }
-                    for item, score in batch
+                    for item in batch
                 ]
-                ids = await asyncio.to_thread(self.db.insert_events_bulk, rows)
-                if self.bus is not None:
-                    # Bulk insert skips dedup hits; ids length may be < batch.
-                    # We don't try to correlate position-by-position — the bus
-                    # is best-effort for live UI. Just publish whatever
-                    # actually landed.
-                    n = min(len(ids), len(batch))
-                    for i in range(n):
-                        item, _score = batch[i]
-                        payload = _item_received_payload(item)
-                        self.bus.publish(
-                            LiveEvent(
-                                event_id=ids[i],
-                                event_type="item_received",
-                                payload_json=_safe_json(payload),
-                            )
-                        )
+                await asyncio.to_thread(self.db.insert_events_bulk, rows)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.exception("event batch flush failed: %s", exc)
                 await asyncio.sleep(0.5)
 
-    async def _drain_one_batch(self) -> List[tuple[Item, Optional[float]]]:
+    async def _drain_one_batch(self) -> List[Item]:
         first = await self._queue.get()
-        batch: List[tuple[Item, Optional[float]]] = [first]
+        batch: List[Item] = [first]
         deadline = asyncio.get_running_loop().time() + self.BATCH_INTERVAL_S
         while len(batch) < self.BATCH_MAX:
             remaining = deadline - asyncio.get_running_loop().time()
@@ -561,7 +346,7 @@ class _LocalProcessingObserver(ProcessingObserver):
         return batch
 
 
-_RESERVED_METADATA_KEYS = {"stream_name", "_classifier_score", "skip_classification"}
+_RESERVED_METADATA_KEYS = {"stream_name"}
 
 
 def _filter_metadata(md: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -569,67 +354,3 @@ def _filter_metadata(md: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         return None
     out = {k: v for k, v in md.items() if k not in _RESERVED_METADATA_KEYS}
     return out or None
-
-
-def _safe_json(payload: Dict[str, Any]) -> str:
-    """json.dumps, then strip NUL bytes (some Bluesky posts contain them)."""
-    s = json.dumps(payload, default=str)
-    return s.replace("\\u0000", "").replace(chr(0), "") if (chr(0) in s or "\\u0000" in s) else s
-
-
-def _model_name_for_log() -> str:
-    return settings.LLM_MODEL or "unknown"
-
-
-def _item_received_payload(item: Item) -> Dict[str, Any]:
-    md = item.metadata or {}
-    return {
-        "source_type": item.source_type,
-        "item_id": item.id,
-        "stream_name": md.get("stream_name", ""),
-        "title": item.title,
-        "body": _effective_body(item),
-        "url": item.url,
-        "author": item.author,
-        "received_at": item.received_at.isoformat() if item.received_at else None,
-        "score": md.get("_classifier_score"),
-    }
-
-
-def _classification_payload(item: Item, c) -> Dict[str, Any]:
-    p = _item_received_payload(item)
-    p.update({
-        "priority": c.priority.value,
-        "summary": c.summary or "",
-        "reasoning": c.reasoning,
-    })
-    return p
-
-
-# Kept for any callers that imported it before the refactor.
-def _item_event_payload(item: Item) -> Dict[str, Any]:
-    return {
-        "source_type": item.source_type,
-        "item_id": item.id,
-        "title": item.title,
-        "body": item.body,
-        "author": item.author,
-        "url": item.url,
-        "stream_name": (item.metadata or {}).get("stream_name", ""),
-        "received_at": item.received_at.isoformat() if item.received_at else None,
-        "score": (item.metadata or {}).get("_classifier_score"),
-    }
-
-
-def _is_transient_classification_error(exc: Exception) -> bool:
-    if isinstance(
-        exc,
-        (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError),
-    ):
-        return True
-    if isinstance(exc, APIStatusError):
-        status_code = getattr(exc, "status_code", None)
-        return status_code in (408, 409, 429) or (
-            isinstance(status_code, int) and status_code >= 500
-        )
-    return False
