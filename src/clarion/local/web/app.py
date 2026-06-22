@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-import secrets
 import time
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from flask import Flask, Response, abort, redirect, render_template, request, stream_with_context, url_for
+from flask import Flask, Response, redirect, render_template, request, stream_with_context, url_for
 
 from clarion.core.logging_config import get_logger
 from clarion.core.streams import ensure_loaded
@@ -16,7 +14,6 @@ from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.time_utils import utc_now
 from clarion.local.config import settings
 from clarion.local.database import LocalDatabase
-from clarion.local.services.preferences import LocalPreferencesService
 from clarion.local.services.runtime import LocalRuntimeService
 from clarion.local.services.streams import LocalStreamService
 
@@ -42,61 +39,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
         finally:
             db.close()
         return render_template("dashboard.html", **snapshot)
-
-    @app.route("/preferences")
-    def preferences_page():
-        db = open_db()
-        try:
-            prefs = LocalPreferencesService(db).load()
-        finally:
-            db.close()
-        return render_template(
-            "preferences.html",
-            telegram_chat_id=prefs.TELEGRAM_CHAT_ID,
-            telegram_bot_username=settings.TELEGRAM_BOT_USERNAME,
-        )
-
-    @app.route("/preferences/telegram/link", methods=["POST"])
-    def telegram_link_start():
-        if not settings.TELEGRAM_BOT_USERNAME:
-            abort(500, "TELEGRAM_BOT_USERNAME not configured")
-        token = secrets.token_urlsafe(24)
-        expires = utc_now() + timedelta(minutes=10)
-        db = open_db()
-        try:
-            db.create_telegram_link_token(token, expires)
-        finally:
-            db.close()
-        return redirect(f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}?start={token}")
-
-    @app.route("/preferences/telegram/unlink", methods=["POST"])
-    def telegram_unlink():
-        db = open_db()
-        try:
-            LocalPreferencesService(db).clear_telegram_chat_id()
-        finally:
-            db.close()
-        return redirect(url_for("preferences_page"))
-
-    @app.route("/prompt", methods=["GET", "POST"])
-    def prompt_page():
-        db = open_db()
-        try:
-            service = LocalPreferencesService(db)
-            if request.method == "POST":
-                service.save_classification_notes(
-                    request.form.get("CLASSIFICATION_NOTES", "")
-                )
-                return redirect(url_for("prompt_page", saved=1))
-            notes = service.load().CLASSIFICATION_NOTES
-        finally:
-            db.close()
-        return render_template(
-            "prompt.html",
-            notes=notes,
-            base_prompt=_base_prompt_preview(),
-            saved=request.args.get("saved") == "1",
-        )
 
     @app.route("/events/stream")
     def events_stream():
@@ -131,74 +73,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     def live_page():
         """Real-time multi-source traffic monitor."""
         return render_template("live.html")
-
-    @app.route("/alerts")
-    def alerts_page():
-        """Recent items the classifier flagged as IMPORTANT."""
-        try:
-            limit = min(max(int(request.args.get("limit", "50")), 5), 500)
-        except (TypeError, ValueError):
-            limit = 50
-        priority_filter = request.args.get("priority", "important")
-        if priority_filter not in ("important", "normal", "all"):
-            priority_filter = "important"
-
-        db = open_db()
-        try:
-            with db.conn.cursor() as cur:
-                where_pri = "" if priority_filter == "all" else (
-                    "AND c.priority = %s"
-                )
-                params: list[Any] = []
-                if priority_filter != "all":
-                    params.append(priority_filter)
-                params.append(limit)
-                cur.execute(
-                    f"""
-                    SELECT
-                        e.id,
-                        c.classified_at        AS created_at,
-                        c.priority             AS priority,
-                        e.source_type          AS source_type,
-                        e.stream_name          AS stream_name,
-                        e.title                AS title,
-                        e.url                  AS url,
-                        c.summary              AS summary,
-                        c.reasoning            AS reasoning
-                    FROM classification c
-                    JOIN event e ON e.id = c.event_id
-                    WHERE TRUE {where_pri}
-                    ORDER BY c.classified_at DESC
-                    LIMIT %s
-                    """,
-                    params,
-                )
-                rows = cur.fetchall()
-
-                cur.execute(
-                    "SELECT priority, COUNT(*) AS c FROM classification GROUP BY 1"
-                )
-                counts = {
-                    (r["priority"] if isinstance(r, dict) else r[0]):
-                    (r["c"] if isinstance(r, dict) else r[1])
-                    for r in cur.fetchall()
-                }
-        finally:
-            db.close()
-
-        items = [dict(r) if isinstance(r, dict) else {
-            "id": r[0], "created_at": r[1], "priority": r[2],
-            "source_type": r[3], "stream_name": r[4],
-            "title": r[5], "url": r[6], "summary": r[7], "reasoning": r[8],
-        } for r in rows]
-
-        return render_template(
-            "alerts.html",
-            items=items,
-            priority_filter=priority_filter,
-            limit=limit,
-            counts=counts,
-        )
 
     @app.route("/streams/activity")
     def streams_activity():
@@ -490,16 +364,6 @@ def _sse_poll_loop(database_url: str, cursor: int):
 
 def _sse_frame(event_id: int, event_type: str, payload_json: str) -> str:
     return f"id: {event_id}\nevent: {event_type}\ndata: {payload_json}\n\n"
-
-
-def _base_prompt_preview() -> str:
-    return (
-        "You are a classification assistant. The user subscribes to several "
-        "news and social information streams and wants to be alerted only to "
-        "the items that genuinely matter.\n\n"
-        "For RSS items, IMPORTANT means: major breaking news with real "
-        "consequences, security advisories, releases the user cares about."
-    )
 
 
 def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
