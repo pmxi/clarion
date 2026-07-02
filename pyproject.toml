@@ -12,6 +12,14 @@ dependencies = [
     "aiohttp>=3.10",
 ]
 
+[project.optional-dependencies]
+# Only needed by `clarion digest build`; collector and web run without it.
+digest = [
+    "numpy>=2.0",
+    "sentence-transformers>=5.0",
+    "torch>=2.4",
+]
+
 [project.scripts]
 clarion = "clarion.local.cli:main"
 clarion-web = "clarion_web.app:main"

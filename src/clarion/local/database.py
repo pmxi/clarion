@@ -17,7 +17,7 @@ from psycopg.rows import dict_row
 
 from clarion.core.time_utils import format_iso_datetime, parse_iso_datetime, utc_now
 
-_CURRENT_SCHEMA_VERSION = 2
+_CURRENT_SCHEMA_VERSION = 3
 _RECONNECT_BACKOFF_BASE = 0.5
 _MAX_RECONNECT_ATTEMPTS = 3
 _SCHEMA_SQL_PATH = Path(__file__).parent / "schema.sql"
