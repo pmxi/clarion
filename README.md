@@ -1,16 +1,21 @@
 # Clarion
 > News monitoring that finds the signal
 
-Clarion collects news at scale and stores it in an append-only event log.
+Clarion solves information overload: it collects news at scale, then
+aggregates each day's articles into a ranked digest of stories. Ranking is
+by breadth of coverage (how many distinct publications wrote about it) —
+a neutral editorial signal, not engagement.
 
 The active runtime polls RSS/Atom feeds and publisher news sitemaps, and
 materializes large source lists from the Media Cloud catalog. Incoming items
-are written to Postgres and appear in a live web dashboard.
+are written to Postgres as an append-only event log.
 
-It is split into two processes that share only the Postgres database:
+It is split into processes that share only the Postgres database:
 - **`clarion`** — the headless collector (one task per stream).
-- **`clarion-web`** — a separate web UI / control plane that reads the data
-  and manages stream config.
+- **`clarion digest build`** — a batch job that clusters one day's articles
+  into stories (multilingual title embeddings + cosine clustering).
+- **`clarion-web`** — a web UI that serves the daily digest, a live feed,
+  and stream management.
 
 ## Installation
 
@@ -63,7 +68,21 @@ uv run clarion run
 This starts the supervisor: one task per enabled stream, writing every
 item into the append-only `event` table. It is headless — no web UI.
 
-### 4. Open the web UI (separate process)
+### 4. Build the daily digest
+
+```bash
+uv sync --extra digest     # once: pulls torch + sentence-transformers
+uv run clarion digest build --day yesterday
+```
+
+This clusters one UTC day's articles into stories: titles are embedded
+with a multilingual encoder (EmbeddingGemma-300m by default), grouped by
+cosine similarity, and ranked by how many distinct publications covered
+them. Results land in the `story` / `story_article` tables; rebuilding a
+day is idempotent. Use `--dry-run` to preview the top clusters in the
+terminal, and `--day today` to rebuild the current day as it grows.
+
+### 5. Open the web UI (separate process)
 
 ```bash
 uv run clarion-web
@@ -73,6 +92,7 @@ The web UI is a separate process that reads the same Postgres database and
 manages stream config. It does **not** collect anything itself — run
 `clarion run` for that. Open `http://127.0.0.1:8765`. No login required.
 From there you can:
+- Read the daily digest: each day's stories ranked by breadth of coverage
 - Watch the live feed as items arrive in real time
 - See collector status and recently-collected items
 - Add RSS streams and disable or delete configured streams

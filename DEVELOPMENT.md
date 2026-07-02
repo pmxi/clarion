@@ -1,5 +1,26 @@
 # TODO
 
+## Digest (daily story aggregation)
+- Deploy the digest job on oracle: `uv sync --frozen --extra digest` +
+  the `clarion-digest.timer` unit (recipe in DEPLOYMENT.md). Benchmark
+  embedding throughput on the ARM CPU first — a 200k-article day may
+  take hours there (~25 min on an M-series laptop).
+- Cross-language story merging: at threshold 0.92 the same story in
+  different languages usually lands in separate clusters, so a global
+  story shows up once per language. Options: second-pass merge of
+  cluster centroids at a lower threshold, or rank/display by combined
+  coverage.
+- Wire-syndication inflation: aol.com/yahoo.com republications count as
+  distinct sources. Fine as a coverage signal, but consider collapsing
+  known mirror domains.
+- The digest ranks by coverage breadth only. Consider a "significance"
+  signal that isn't engagement-shaped (e.g. front-page placement,
+  cross-language spread).
+- Embedding caches in `artifacts/` grow ~300 MB/day (float16); prune
+  automatically after a day closes.
+- Consider making `/` the digest page once it's proven — the product is
+  the digest, the dashboard is ops.
+
 ## Data sources
 - Figure out X (Twitter) scraping — the most valuable source we haven't unlocked.
 - Figure out Instagram scraping.
@@ -9,10 +30,6 @@
   so aggregator apps stop depending on direct Postgres access. Today
   `clarion_web` reads Postgres directly — the deliberate "shared Postgres now,
   API later" call.
-- Fix the `.env` naming drift: it still points at the legacy
-  `sentinel_user@.../sentinel` DB, but the live database is
-  `clarion_user@.../clarion`. (Untracked file, holds the password — update by
-  hand.)
 - Migrate the live `oracle` deployment off the legacy Sentinel names: checkout
   path, the now-two systemd units (`clarion` + `clarion-web`), environment
   path, Postgres database, and Postgres role.

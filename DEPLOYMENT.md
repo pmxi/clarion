@@ -100,6 +100,8 @@ To close a tunnel: `pkill -f 'ssh -fN -L 8766'` (or the matching port).
 
 | Path | What |
 |---|---|
+| `/digest` | Daily story digest — redirects to the latest built day. |
+| `/digest/<date>` | Stories for one UTC day, ranked by distinct-publication coverage; language filter + pagination. Reads `story` / `story_article` only, so it needs a `clarion digest build` to have run for that day. |
 | `/` | Original dashboard (status + 2-column live feed). |
 | `/live` | Multi-source live monitor with sidebar (filter by source type + top stream), full-text search, rate counters. |
 | `/streams` | Stream-row management — search/filter/paginate; toggle/delete. |
@@ -178,6 +180,7 @@ All tables use **singular names** as of the May-2026 migration.
 | Table | Purpose |
 |---|---|
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
+| `story`, `story_article` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
 | `classification`, `classification_failure` | **Legacy** — retained for the historical data classified before classification was removed. No longer written to. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
 | `app_setting`, `local_setting` | Key-value config. |
@@ -216,6 +219,54 @@ ALTER TABLE <newtable> OWNER TO clarion_user;
 This bit us during the singular-names migration; the
 `tools/migrate_to_singular_schema.sql` file is still in the tree as
 reference but isn't meant to re-run.
+
+## Daily digest job (not yet deployed on oracle)
+
+`clarion digest build` is the third process: a batch job that embeds one
+UTC day's titles (EmbeddingGemma-300m, multilingual), clusters them into
+stories, and writes `story` / `story_article`. The web `/digest` pages
+read only those tables, so the web unit needs no new dependencies — but
+the build job needs the ML extra:
+
+```bash
+ssh oracle 'cd /home/ubuntu/clarion && ~/.local/bin/uv sync --frozen --extra digest'
+```
+
+To run it nightly for the just-closed UTC day, add a user timer pair
+(`~/.config/systemd/user/clarion-digest.{service,timer}`):
+
+```ini
+# clarion-digest.service
+[Service]
+Type=oneshot
+Nice=10
+WorkingDirectory=/home/ubuntu/clarion
+EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
+ExecStart=/home/ubuntu/clarion/.venv/bin/clarion digest build --day yesterday
+```
+
+```ini
+# clarion-digest.timer
+[Timer]
+OnCalendar=*-*-* 00:20 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+Then `systemctl --user daemon-reload && systemctl --user enable --now
+clarion-digest.timer`.
+
+Notes:
+- First run downloads the ~1.2 GB encoder from Hugging Face into
+  `~/.cache/huggingface`.
+- On oracle's 4-core ARM CPU, embedding a ~200k-article day is the slow
+  part — expect hours, not minutes (benchmark before relying on it; an
+  M-series laptop does the same day in ~25 min). The per-day embedding
+  cache in `artifacts/` makes intra-day rebuilds (`--day today`)
+  incremental. Cache files are ~300 MB/day of float16 vectors; prune old
+  ones freely.
+- `Nice=10` keeps it from starving the collector; latency doesn't matter.
 
 ## Adding scraping coverage
 
