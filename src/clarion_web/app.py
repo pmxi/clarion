@@ -8,12 +8,15 @@ from typing import Any, Dict, List, Optional
 
 from flask import Flask, Response, redirect, render_template, request, stream_with_context, url_for
 
+from datetime import date
+
 from clarion.core.logging_config import get_logger
 from clarion.core.streams import ensure_loaded
 from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.time_utils import utc_now
 from clarion.local.config import settings
 from clarion.local.database import LocalDatabase
+from clarion.local.services.digest import DigestReadService
 from clarion.local.services.runtime import LocalRuntimeService
 from clarion.local.services.streams import LocalStreamService
 
@@ -39,6 +42,72 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
         finally:
             db.close()
         return render_template("dashboard.html", **snapshot)
+
+    @app.route("/digest")
+    def digest_latest():
+        db = open_db()
+        try:
+            days = DigestReadService(db).available_days()
+        finally:
+            db.close()
+        if not days:
+            return render_template("digest.html", day=None)
+        return redirect(url_for("digest_day", day=days[0].isoformat()))
+
+    @app.route("/digest/<day>")
+    def digest_day(day: str):
+        try:
+            day_val = date.fromisoformat(day)
+        except ValueError:
+            return redirect(url_for("digest_latest"))
+
+        lang = (request.args.get("lang") or "").strip().lower() or None
+        try:
+            page = max(1, int(request.args.get("page", "1")))
+        except ValueError:
+            page = 1
+        per_page = 50
+        offset = (page - 1) * per_page
+
+        db = open_db()
+        try:
+            svc = DigestReadService(db)
+            days = svc.available_days()
+            stats = svc.day_stats(day_val)
+            total = svc.story_count(day_val, lang=lang)
+            stories = svc.top_stories(day_val, lang=lang, limit=per_page, offset=offset)
+            members = svc.members_for([s["id"] for s in stories])
+            langs = svc.lang_counts(day_val)
+        finally:
+            db.close()
+
+        # Distinct top domains per story, ordered by closeness to the story.
+        for s in stories:
+            seen: list[str] = []
+            for m in members.get(s["id"], []):
+                if m["domain"] not in seen:
+                    seen.append(m["domain"])
+            s["top_domains"] = seen[:6]
+
+        prev_day = next((d for d in days if d < day_val), None)
+        next_day = next((d for d in reversed(days) if d > day_val), None)
+        pages = max(1, (total + per_page - 1) // per_page)
+
+        return render_template(
+            "digest.html",
+            day=day_val,
+            stories=stories,
+            members=members,
+            stats=stats,
+            langs=langs,
+            lang=lang,
+            page=page,
+            pages=pages,
+            total=total,
+            offset=offset,
+            prev_day=prev_day,
+            next_day=next_day,
+        )
 
     @app.route("/events/stream")
     def events_stream():

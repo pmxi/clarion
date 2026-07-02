@@ -171,6 +171,76 @@ details[open] summary { margin-bottom: 0.5rem; }
 }
 .errors ul { margin: 0.25rem 0 0 1.25rem; padding: 0; }
 
+/* Daily digest ------------------------------------------------------ */
+
+.digest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.digest-daynav { display: flex; gap: 1rem; font-size: 0.9rem; }
+
+.digest-langs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.digest-langs a {
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+}
+.digest-langs a:hover { text-decoration: none; background: #f0f0f0; }
+.digest-langs a.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.digest-langs a.active .muted { color: #cdd9f0; }
+
+.story-list {
+  margin: 1.25rem 0 0;
+  padding: 0 0 0 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.story::marker { color: var(--muted); font-size: 0.85rem; }
+
+.story {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.6rem 0.8rem;
+}
+.story-title { font-weight: 550; font-size: 1.02rem; line-height: 1.35; }
+.story-title a { color: inherit; }
+.story-meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+.story details { margin-top: 0.2rem; }
+.story details summary { font-size: 0.82rem; }
+
+.story-coverage {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+.story-coverage .muted { margin-left: 0.4rem; font-size: 0.78rem; }
+
+.digest-pager {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  margin-top: 1.25rem;
+}
+
 /* Live feed --------------------------------------------------------- */
 
 .muted { color: var(--muted); font-size: 0.85rem; font-weight: normal; margin-left: 0.5rem; }

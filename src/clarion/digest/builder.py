@@ -8,27 +8,21 @@ that day", which for a daily news digest is the honest framing.
 
 from __future__ import annotations
 
-import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlsplit
 
 import numpy as np
 
 from clarion.core.logging_config import get_logger
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
+from clarion.digest.text import normalize_lang, normalize_title, source_domain
 
 logger = get_logger(__name__)
-
-# Some sitemap "titles" are whole paragraphs (live-blog minutes); cap what
-# we feed the encoder. Display always uses the stored event title.
-_MAX_TITLE_CHARS = 300
-_WS = re.compile(r"\s+")
 
 
 @dataclass
@@ -85,7 +79,7 @@ def build_digest(db, day: date, config: DigestConfig, dry_run: bool = False) -> 
         logger.info("digest: no events for %s, nothing to do", day)
         return stats
 
-    titles = [_normalize_title(r["title"]) for r in rows]
+    titles = [normalize_title(r["title"]) for r in rows]
     t0 = time.monotonic()
     emb = _embed_with_cache(rows, titles, day, config)
     stats.seconds_embed = time.monotonic() - t0
@@ -140,10 +134,6 @@ def _fetch_day(db, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     with db.conn.cursor() as cur:
         cur.execute(sql, params)
         return [dict(r) for r in cur.fetchall()]
-
-
-def _normalize_title(title: str) -> str:
-    return _WS.sub(" ", title).strip()[:_MAX_TITLE_CHARS]
 
 
 # ----- embeddings (with per-day cache) ------------------------------------
@@ -215,21 +205,6 @@ def _embed_with_cache(
 # ----- aggregation --------------------------------------------------------
 
 
-def _source_domain(url: Optional[str], stream_name: str) -> str:
-    if url:
-        netloc = urlsplit(url).netloc.lower()
-        netloc = netloc.rpartition("@")[2].partition(":")[0]
-        netloc = netloc.removeprefix("www.")
-        if netloc:
-            return netloc
-    return stream_name
-
-
-def _normalize_lang(lang: Optional[str]) -> Optional[str]:
-    lang = (lang or "").strip().lower()
-    return lang.split("-")[0] or None
-
-
 def _aggregate(
     rows: List[Dict[str, Any]],
     assignment: np.ndarray,
@@ -245,18 +220,18 @@ def _aggregate(
     for cid, idxs in enumerate(members):
         if len(idxs) < config.min_articles:
             continue
-        domains = Counter(_source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
-        langs = Counter(l for k in idxs if (l := _normalize_lang(rows[k]["lang"])))
+        domains = Counter(source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
+        langs = Counter(l for k in idxs if (l := normalize_lang(rows[k]["lang"])))
         medoid = max(idxs, key=lambda k: similarity[k])
         stories.append(_Story(
-            title=_normalize_title(rows[medoid]["title"]),
+            title=normalize_title(rows[medoid]["title"]),
             rep_event_id=int(rows[medoid]["id"]),
             article_count=len(idxs),
             source_count=len(domains),
             lang=langs.most_common(1)[0][0] if langs else None,
             domains=[d for d, _ in domains.most_common(6)],
             members=[(int(rows[k]["id"]), float(similarity[k])) for k in idxs],
-            sample_titles=[_normalize_title(rows[k]["title"]) for k in idxs[:5]],
+            sample_titles=[normalize_title(rows[k]["title"]) for k in idxs[:5]],
         ))
     return stories
 
