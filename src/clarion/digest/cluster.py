@@ -22,6 +22,7 @@ approximations follow from that, both negligible at news-title scale:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -40,12 +41,18 @@ def cluster_greedy(
     emb: np.ndarray,
     threshold: float,
     batch_size: int = 1024,
-    merge_pass: bool = True,
+    merge_threshold: Optional[float] = None,
 ) -> ClusterResult:
+    """merge_threshold defaults to threshold + 0.03: merging at the
+    assignment threshold lets union-find chain through dense template-
+    headline regions into black-hole clusters (measured: an 8k-article
+    cluster mixing bonds, NBA trades and student loans), while +0.03
+    still re-joins genuine fragments of one story. Pass 1.0 to disable."""
     assignment = _assign_greedy(emb, threshold, batch_size)
-    if merge_pass:
+    merge_at = threshold + 0.03 if merge_threshold is None else merge_threshold
+    if merge_at < 1.0:
         centroids, _ = _finalize(emb, assignment)
-        assignment = _merge_fragments(assignment, centroids, threshold)
+        assignment = _merge_fragments(assignment, centroids, merge_at)
     centroids, similarity = _finalize(emb, assignment)
     return ClusterResult(assignment=assignment, centroids=centroids, similarity=similarity)
 

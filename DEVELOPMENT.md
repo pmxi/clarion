@@ -13,6 +13,16 @@
 - Wire-syndication inflation: aol.com/yahoo.com republications count as
   distinct sources. Fine as a coverage signal, but consider collapsing
   known mirror domains.
+- Known cluster-quality limits at full-day scale (all title-only
+  embedding artifacts, acceptable for now):
+  - topical blobs: "NBA offseason moves" style clusters (~700 articles)
+    where many related-but-distinct stories share one cluster;
+  - template events: near-identical headlines about different events
+    ("fire extinguished in <town>") cluster together;
+  - small-language blobs: for less-represented languages (sr, te, ta)
+    the embedding space is less separated and unrelated stories merge.
+  A cheap lever if these annoy: store mean member-to-centroid
+  similarity per story and downrank/split low-coherence giants.
 - The digest ranks by coverage breadth only. Consider a "significance"
   signal that isn't engagement-shaped (e.g. front-page placement,
   cross-language spread).

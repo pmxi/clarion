@@ -115,13 +115,17 @@ def build_digest(db, day: date, config: DigestConfig, dry_run: bool = False) -> 
 def _fetch_day(db, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
     end = start + timedelta(days=1)
+    # LENGTH filter: ultra-short titles ("AO VIVO", "(no title)", section
+    # names) carry no story signal and congeal into junk-attractor
+    # clusters; leave them out of the digest entirely. 12 chars keeps
+    # legitimate CJK headlines, which are short in characters.
     sql = """
         SELECT id, title, url, stream_name,
                metadata->>'language' AS lang,
                received_at
         FROM event
         WHERE observed_at >= %s AND observed_at < %s
-          AND title <> ''
+          AND LENGTH(title) >= 12
     """
     params: List[Any] = [start, end]
     if config.lang:
