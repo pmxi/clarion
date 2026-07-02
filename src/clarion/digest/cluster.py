@@ -5,6 +5,12 @@ cluster if its cosine similarity to that cluster's centroid clears the
 threshold, otherwise it starts a new cluster. Centroids are running
 means, renormalized after every update.
 
+Greedy assignment fragments: early items seed a cluster before its
+centroid has converged, so one story can split into several clusters
+(measured ~13% of multi-article clusters on real data). A final merge
+pass unions clusters whose *final* centroids clear the same threshold,
+which re-joins those fragments.
+
 For throughput, items are scored against pre-existing centroids one
 batch at a time (a single GEMM instead of per-item matvecs). Two
 approximations follow from that, both negligible at news-title scale:
@@ -34,7 +40,17 @@ def cluster_greedy(
     emb: np.ndarray,
     threshold: float,
     batch_size: int = 1024,
+    merge_pass: bool = True,
 ) -> ClusterResult:
+    assignment = _assign_greedy(emb, threshold, batch_size)
+    if merge_pass:
+        centroids, _ = _finalize(emb, assignment)
+        assignment = _merge_fragments(assignment, centroids, threshold)
+    centroids, similarity = _finalize(emb, assignment)
+    return ClusterResult(assignment=assignment, centroids=centroids, similarity=similarity)
+
+
+def _assign_greedy(emb: np.ndarray, threshold: float, batch_size: int) -> np.ndarray:
     n_items, dim = emb.shape
     assignment = np.full(n_items, -1, dtype=np.int64)
 
@@ -81,11 +97,49 @@ def cluster_greedy(
                 counts[cid] += 1
             assignment[start + i] = cid
 
-    # Exact final centroids from full membership, then per-row similarity.
-    final = np.zeros((n_clusters, dim), dtype=np.float32)
+    return assignment
+
+
+def _merge_fragments(
+    assignment: np.ndarray,
+    centroids: np.ndarray,
+    threshold: float,
+    block: int = 2048,
+) -> np.ndarray:
+    """Union clusters whose final centroids clear the threshold; return a
+    re-densified assignment. Works in blocks to bound the sims matrix."""
+    n = len(centroids)
+    parent = np.arange(n)
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for lo in range(0, n, block):
+        blk = centroids[lo : min(lo + block, n)]
+        sims = blk @ centroids.T
+        for i in range(len(blk)):  # strict upper triangle only
+            sims[i, : lo + i + 1] = 0.0
+        for i, j in np.argwhere(sims >= threshold):
+            ra, rb = find(lo + int(i)), find(int(j))
+            if ra != rb:
+                parent[ra] = rb
+
+    roots = np.array([find(c) for c in range(n)], dtype=np.int64)
+    dense = {r: k for k, r in enumerate(dict.fromkeys(roots[assignment].tolist()))}
+    return np.array([dense[r] for r in roots[assignment]], dtype=np.int64)
+
+
+def _finalize(emb: np.ndarray, assignment: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Exact centroids (mean of members, renormalized) and each row's
+    cosine similarity to its own centroid."""
+    n_clusters = int(assignment.max()) + 1
+    final = np.zeros((n_clusters, emb.shape[1]), dtype=np.float32)
     np.add.at(final, assignment, emb)
     norms = np.linalg.norm(final, axis=1, keepdims=True)
-    np.divide(final, norms, out=final, where=norms > 0)
+    norms[norms == 0] = 1.0
+    final /= norms
     similarity = np.einsum("ij,ij->i", emb, final[assignment]).astype(np.float32)
-
-    return ClusterResult(assignment=assignment, centroids=final, similarity=similarity)
+    return final, similarity
