@@ -272,8 +272,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="UTC day to build: YYYY-MM-DD, 'today' or 'yesterday' (default: today)",
     )
     dbuild.add_argument(
-        "--threshold", type=float, default=0.80,
-        help="Cosine similarity for two titles to share a story (default: 0.80)",
+        "--threshold", type=float, default=0.92,
+        help="Cosine similarity for two titles to share a story (default: 0.92; "
+             "0.80 produced topic blobs, 0.90-0.925 produced clean stories)",
     )
     dbuild.add_argument(
         "--model", default="google/embeddinggemma-300m",

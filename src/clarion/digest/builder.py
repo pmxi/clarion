@@ -34,7 +34,7 @@ _WS = re.compile(r"\s+")
 @dataclass
 class DigestConfig:
     model_name: str = DEFAULT_MODEL
-    threshold: float = 0.80
+    threshold: float = 0.92
     batch_size: int = 128          # encoder batch
     cluster_batch: int = 1024      # GEMM batch for greedy clustering
     min_articles: int = 2          # don't persist singleton clusters
@@ -195,10 +195,11 @@ def _embed_with_cache(
         emb[k] = new_emb[pos]
     hit = [k for k in range(len(ids)) if int(ids[k]) in id_to_row]
     if hit:
-        emb[hit] = cached_emb[[id_to_row[int(ids[k])] for k in hit]].astype(np.float32)
+        hit_emb = cached_emb[[id_to_row[int(ids[k])] for k in hit]].astype(np.float32)
         # float16 storage denormalizes slightly; restore unit length.
-        norms = np.linalg.norm(emb[hit], axis=1, keepdims=True)
-        emb[hit] = np.divide(emb[hit], norms, where=norms > 0)
+        norms = np.linalg.norm(hit_emb, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        emb[hit] = hit_emb / norms
 
     if path is not None and missing:
         path.parent.mkdir(parents=True, exist_ok=True)
