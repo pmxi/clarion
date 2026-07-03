@@ -1,6 +1,6 @@
 """CLI surface smoke test: every advertised command still parses."""
 
-from clarion.local.cli import build_parser
+from clarion.cli import build_parser
 
 
 def test_commands_parse():

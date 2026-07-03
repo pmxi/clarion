@@ -15,8 +15,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from psycopg_pool import ConnectionPool
+
+from clarion.db.stores import events as events_store
 from clarion.ingest.sources import Item
-from clarion.local.database import LocalDatabase
 from clarion.logging import get_logger
 
 logger = get_logger(__name__)
@@ -29,8 +31,8 @@ class EventWriter:
     BATCH_INTERVAL_S = 0.25
     QUEUE_MAX = 50_000
 
-    def __init__(self, db: LocalDatabase):
-        self.db = db
+    def __init__(self, pool: ConnectionPool):
+        self.pool = pool
         self._queue: "asyncio.Queue[Item]" = asyncio.Queue(maxsize=self.QUEUE_MAX)
         self._task: Optional[asyncio.Task] = None
         self._dropped: int = 0
@@ -71,12 +73,16 @@ class EventWriter:
                     }
                     for item in batch
                 ]
-                await asyncio.to_thread(self.db.insert_events_bulk, rows)
+                await asyncio.to_thread(self._write_rows, rows)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.exception("event batch flush failed: %s", exc)
                 await asyncio.sleep(0.5)
+
+    def _write_rows(self, rows: List[Dict[str, Any]]) -> None:
+        with self.pool.connection() as conn:
+            events_store.insert_bulk(conn, rows)
 
     async def _drain_one_batch(self) -> List[Item]:
         first = await self._queue.get()

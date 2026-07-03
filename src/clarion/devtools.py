@@ -1,7 +1,7 @@
 """Synthetic local firehose for exercising the web UI.
 
-This bypasses slow upstream publishers by writing news events directly into
-the local PostgreSQL `event` table at a configurable rate.
+This bypasses slow upstream publishers by writing news events directly
+into the `event` table at a configurable rate.
 """
 
 from __future__ import annotations
@@ -9,8 +9,10 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+from clarion.db import pool as db_pool
+from clarion.db.stores import events as events_store
+from clarion.db.stores import state as state_store
 from clarion.timeutils import utc_now
-from clarion.local.database import LocalDatabase
 
 _TOPICS = (
     "Breaking market update",
@@ -50,9 +52,9 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
     emitted = 0
     interval_seconds = 1.0 / config.rate
 
-    with LocalDatabase(database_url) as db:
-        if db.get_monitoring_start_time() is None:
-            db.set_monitoring_start_time(utc_now())
+    with db_pool.raw_connection(database_url) as conn:
+        if state_store.get_monitoring_start_time(conn) is None:
+            state_store.set_monitoring_start_time(conn, utc_now())
 
         while config.count is None or emitted < config.count:
             started = time.perf_counter()
@@ -60,7 +62,8 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
             now = utc_now()
             topic = _TOPICS[(item_number - 1) % len(_TOPICS)]
             author = _AUTHORS[(item_number - 1) % len(_AUTHORS)]
-            db.insert_event(
+            events_store.insert(
+                conn,
                 source_type=config.source_type,
                 item_id=f"{config.stream_name}-{item_number:06d}",
                 stream_name=config.stream_name,
@@ -70,7 +73,7 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
                 author=author,
                 received_at=now,
             )
-            db.update_last_check_time(now)
+            state_store.set_last_check_time(conn, now)
 
             emitted += 1
             remaining = interval_seconds - (time.perf_counter() - started)

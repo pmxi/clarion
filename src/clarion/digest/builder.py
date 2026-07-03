@@ -16,11 +16,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from psycopg_pool import ConnectionPool
 
-from clarion.logging import get_logger
+from clarion.db.stores import stories as stories_store
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
 from clarion.digest.text import normalize_lang, normalize_title, source_domain
+from clarion.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -63,16 +65,20 @@ class _Story:
     sample_titles: List[str] = field(default_factory=list)
 
 
-def build_digest(db, day: date, config: DigestConfig, dry_run: bool = False) -> DigestStats:
+def build_digest(
+    pool: ConnectionPool, day: date, config: DigestConfig, dry_run: bool = False
+) -> DigestStats:
     """Build (or rebuild) the story digest for one UTC day.
 
-    `db` is an open LocalDatabase; its connection is used directly so the
-    delete+insert of a day happens in one transaction.
+    Takes the pool rather than a connection: embedding can run for hours,
+    and separate checkouts for the fetch and the final write mean a
+    connection dropped mid-embed heals instead of failing the run.
     """
     stats = DigestStats(day=day)
 
     t0 = time.monotonic()
-    rows = _fetch_day(db, day, config)
+    with pool.connection() as conn:
+        rows = _fetch_day(conn, day, config)
     stats.seconds_fetch = time.monotonic() - t0
     stats.n_events = len(rows)
     if not rows:
@@ -98,7 +104,19 @@ def build_digest(db, day: date, config: DigestConfig, dry_run: bool = False) -> 
         return stats
 
     t0 = time.monotonic()
-    _write_day(db, day, stories)
+    payload = [
+        {
+            "title": s.title,
+            "rep_event_id": s.rep_event_id,
+            "article_count": s.article_count,
+            "source_count": s.source_count,
+            "lang": s.lang,
+            "members": s.members,
+        }
+        for s in stories
+    ]
+    with pool.connection() as conn:
+        stories_store.replace_day(conn, day, payload)
     stats.seconds_write = time.monotonic() - t0
     logger.info(
         "digest %s: %d events -> %d clusters -> %d stories "
@@ -112,7 +130,7 @@ def build_digest(db, day: date, config: DigestConfig, dry_run: bool = False) -> 
 # ----- fetch --------------------------------------------------------------
 
 
-def _fetch_day(db, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
+def _fetch_day(conn, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
     end = start + timedelta(days=1)
     # LENGTH filter: ultra-short titles ("AO VIVO", "(no title)", section
@@ -135,7 +153,7 @@ def _fetch_day(db, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     if config.limit:
         sql += " LIMIT %s"
         params.append(config.limit)
-    with db.conn.cursor() as cur:
+    with conn.cursor() as cur:
         cur.execute(sql, params)
         return [dict(r) for r in cur.fetchall()]
 
@@ -238,45 +256,6 @@ def _aggregate(
             sample_titles=[normalize_title(rows[k]["title"]) for k in idxs[:5]],
         ))
     return stories
-
-
-# ----- persistence --------------------------------------------------------
-
-_STORY_CHUNK = 500
-
-
-def _write_day(db, day: date, stories: List[_Story]) -> None:
-    with db.conn.transaction():
-        with db.conn.cursor() as cur:
-            cur.execute("DELETE FROM story WHERE day = %s", (day,))
-            id_by_rep: Dict[int, int] = {}
-            for lo in range(0, len(stories), _STORY_CHUNK):
-                chunk = stories[lo : lo + _STORY_CHUNK]
-                placeholders = ",".join(["(%s,%s,%s,%s,%s,%s)"] * len(chunk))
-                flat: List[Any] = []
-                for s in chunk:
-                    flat.extend((day, s.title, s.rep_event_id,
-                                 s.article_count, s.source_count, s.lang))
-                cur.execute(
-                    f"""
-                    INSERT INTO story (day, title, rep_event_id, article_count,
-                                       source_count, lang)
-                    VALUES {placeholders}
-                    RETURNING id, rep_event_id
-                    """,
-                    flat,
-                )
-                # rep_event_id is unique per story (the medoid is a member,
-                # and members are disjoint), so it keys the id mapping.
-                for r in cur.fetchall():
-                    id_by_rep[int(r["rep_event_id"])] = int(r["id"])
-            with cur.copy(
-                "COPY story_article (story_id, event_id, similarity) FROM STDIN"
-            ) as copy:
-                for s in stories:
-                    sid = id_by_rep[s.rep_event_id]
-                    for event_id, sim in s.members:
-                        copy.write_row((sid, event_id, sim))
 
 
 # ----- dry-run preview -----------------------------------------------------

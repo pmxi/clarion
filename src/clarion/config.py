@@ -1,14 +1,18 @@
-"""Local runtime settings loaded from PostgreSQL-backed app_settings."""
+"""Runtime settings.
+
+DATABASE_URL comes from the environment (.env is honored); everything
+else loads from the Postgres-backed `app_setting` table via load().
+"""
 
 from __future__ import annotations
 
 import os
-from typing import Any, TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from dotenv import load_dotenv
 
 if TYPE_CHECKING:
-    from clarion.local.database import LocalDatabase
+    import psycopg
 
 load_dotenv()
 
@@ -31,8 +35,10 @@ class Settings:
         return cls.DATABASE_URL
 
     @classmethod
-    def load(cls, db: "LocalDatabase") -> None:
-        for key, raw in db.get_all_app_settings().items():
+    def load(cls, conn: "psycopg.Connection") -> None:
+        from clarion.db.stores import settings as settings_store
+
+        for key, raw in settings_store.all(conn).items():
             if not hasattr(cls, key):
                 continue
             default = getattr(cls, key)

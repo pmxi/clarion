@@ -1,4 +1,4 @@
-"""Local Clarion CLI."""
+"""Clarion CLI — the composition root that wires every domain together."""
 
 from __future__ import annotations
 
@@ -7,23 +7,21 @@ import asyncio
 import sys
 from typing import Optional
 
-from clarion.ingest.sources.rss.config import RSSStreamConfig
-from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
+from psycopg_pool import ConnectionPool
+
+from clarion.catalog.materialize import MaterializeFilter, format_plan, materialize
 from clarion.config import settings
+from clarion.db import pool as db_pool
+from clarion.db.migrate import ensure_schema
+from clarion.db.stores import settings as settings_store
+from clarion.db.stores import streams as streams_store
+from clarion.devtools import FirehoseConfig, run_firehose
+from clarion.ingest.sources import describe_stream_rows, get as get_stream_spec
 from clarion.ingest.supervisor import Supervisor
-from clarion.local.database import LocalDatabase
-from clarion.local.dev_firehose import FirehoseConfig, run_firehose
-from clarion.local.services.settings import LocalSetupService
-from clarion.local.services.sources_materialize import (
-    MaterializeFilter,
-    format_plan,
-    materialize,
-)
-from clarion.local.services.streams import LocalStreamService
 
 
-def _open_db() -> LocalDatabase:
-    return LocalDatabase(settings.require_database_url())
+def _pool() -> ConnectionPool:
+    return db_pool.open_pool(settings.require_database_url())
 
 
 def _prompt(label: str, default: Optional[str] = None) -> str:
@@ -33,19 +31,29 @@ def _prompt(label: str, default: Optional[str] = None) -> str:
 
 
 def cmd_init(_args: argparse.Namespace) -> None:
-    db = _open_db()
-    settings.load(db)
-    LocalSetupService(db).initialize()
-    print("\nLocal setup complete.")
+    import secrets
+
+    with _pool().connection() as conn:
+        ensure_schema(conn)
+        settings.load(conn)
+        if not settings_store.get(conn, "SESSION_SECRET"):
+            settings_store.set(conn, "SESSION_SECRET", secrets.token_hex(32))
+    print("\nSetup complete.")
     print("  - Add an RSS feed: clarion stream add --type rss")
-    print("  - Start monitor:   clarion run")
+    print("  - Start collector: clarion run")
     print("  - Open web UI:     clarion-web")
     print("  - Drive test load: clarion dev firehose --rate 20 --count 200")
 
 
+def cmd_db_migrate(_args: argparse.Namespace) -> None:
+    with _pool().connection() as conn:
+        ensure_schema(conn)
+    print("Schema is up to date.")
+
+
 def cmd_stream_list(_args: argparse.Namespace) -> None:
-    db = _open_db()
-    rows = LocalStreamService(db).list_stream_rows()
+    with _pool().connection() as conn:
+        rows = describe_stream_rows(streams_store.list_all(conn))
     if not rows:
         print("No streams configured. Run 'clarion stream add --type rss'.")
         return
@@ -56,14 +64,12 @@ def cmd_stream_list(_args: argparse.Namespace) -> None:
 
 
 def cmd_stream_remove(args: argparse.Namespace) -> None:
-    db = _open_db()
-    LocalStreamService(db).delete_stream(args.name)
+    with _pool().connection() as conn:
+        streams_store.delete(conn, args.name)
     print(f"Removed stream {args.name!r}")
 
 
 def cmd_stream_add(args: argparse.Namespace) -> None:
-    db = _open_db()
-    service = LocalStreamService(db)
     stream_type = args.type
     if not stream_type:
         print("Stream types: (1) rss  (2) sitemap_news")
@@ -84,14 +90,15 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
     elif stream_type == "sitemap_news":
         sitemap_url = _prompt("Sitemap URL (e.g. https://www.bloomberg.com/sitemaps/news/latest.xml)")
         publication = _prompt("Publication display name", default=name)
-        config_json = SitemapNewsStreamConfig(
+        config_json = get_stream_spec("sitemap_news").config_cls(
             sitemap_url=sitemap_url,
             publication_name=publication,
         ).model_dump_json()
     else:
         raise SystemExit(f"Unknown stream type: {stream_type!r}")
 
-    service.add_stream(name, stream_type, config_json)
+    with _pool().connection() as conn:
+        streams_store.add(conn, name, stream_type, config_json)
     print(f"\nAdded stream {name!r} (type={stream_type}).")
 
 
@@ -100,7 +107,7 @@ def _prompt_rss_stream() -> str:
     if not feed_url:
         raise SystemExit("feed_url is required.")
     poll_seconds = int(_prompt("Poll interval (seconds)", default="300"))
-    config = RSSStreamConfig(feed_url=feed_url, poll_seconds=poll_seconds)
+    config = get_stream_spec("rss").config_cls(feed_url=feed_url, poll_seconds=poll_seconds)
     return config.model_dump_json()
 
 
@@ -154,11 +161,7 @@ def cmd_digest_build(args: argparse.Namespace) -> None:
         limit=args.limit,
         lang=args.lang,
     )
-    db = _open_db()
-    try:
-        stats = build_digest(db, day, config, dry_run=args.dry_run)
-    finally:
-        db.close()
+    stats = build_digest(_pool(), day, config, dry_run=args.dry_run)
     if not args.dry_run:
         print(
             f"Digest for {stats.day}: {stats.n_events} events -> "
@@ -169,9 +172,11 @@ def cmd_digest_build(args: argparse.Namespace) -> None:
 
 
 def cmd_run(_args: argparse.Namespace) -> None:
-    db = _open_db()
-    settings.load(db)
-    asyncio.run(Supervisor(db).run())
+    pool = _pool()
+    with pool.connection() as conn:
+        ensure_schema(conn)
+        settings.load(conn)
+    asyncio.run(Supervisor(pool).run())
 
 
 def cmd_dev_firehose(args: argparse.Namespace) -> None:
@@ -199,10 +204,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="clarion")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("init", help="Configure the local runtime").set_defaults(func=cmd_init)
-    sub.add_parser("run", help="Start the local supervisor").set_defaults(func=cmd_run)
+    sub.add_parser("init", help="Configure the runtime").set_defaults(func=cmd_init)
+    sub.add_parser("run", help="Start the collector supervisor").set_defaults(func=cmd_run)
 
-    stream = sub.add_parser("stream", help="Manage local data streams")
+    db = sub.add_parser("db", help="Database administration")
+    db_sub = db.add_subparsers(dest="db_cmd", required=True)
+    db_sub.add_parser(
+        "migrate", help="Apply schema.sql idempotently"
+    ).set_defaults(func=cmd_db_migrate)
+
+    stream = sub.add_parser("stream", help="Manage data streams")
     stream_sub = stream.add_subparsers(dest="stream_cmd", required=True)
 
     stream_sub.add_parser("list").set_defaults(func=cmd_stream_list)
@@ -353,6 +364,8 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nAborted.", file=sys.stderr)
         sys.exit(130)
+    finally:
+        db_pool.close_pool()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
--- Clarion local runtime schema (singular table names).
--- Applied idempotently at startup by LocalDatabase._create_tables().
+-- Clarion runtime schema (singular table names).
+-- Applied idempotently by clarion.db.migrate.ensure_schema() — once per
+-- process startup and via `clarion db migrate`. Never at connect time.
 
 CREATE TABLE IF NOT EXISTS schema_meta (
     key TEXT PRIMARY KEY,
@@ -7,12 +8,6 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 CREATE TABLE IF NOT EXISTS app_setting (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS local_setting (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

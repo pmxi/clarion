@@ -1,24 +1,26 @@
-"""Local single-user web app."""
+"""Clarion web UI: daily digest, live feed, stream management."""
 
 from __future__ import annotations
 
 import json
 import time
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from flask import Flask, Response, redirect, render_template, request, stream_with_context, url_for
 
-from datetime import date
-
-from clarion.logging import get_logger
-from clarion.ingest.sources import ensure_loaded
-from clarion.ingest.sources import get as get_stream_spec
-from clarion.timeutils import utc_now
 from clarion.config import settings
-from clarion.local.database import LocalDatabase
-from clarion.local.services.digest import DigestReadService
-from clarion.local.services.runtime import LocalRuntimeService
-from clarion.local.services.streams import LocalStreamService
+from clarion.db import pool as db_pool
+from clarion.db.migrate import ensure_schema
+from clarion.db.stores import events as events_store
+from clarion.db.stores import state as state_store
+from clarion.db.stores import stories as stories_store
+from clarion.db.stores import streams as streams_store
+from clarion.digest.text import source_domain
+from clarion.ingest.sources import describe_stream_rows, ensure_loaded
+from clarion.ingest.sources import get as get_stream_spec
+from clarion.logging import get_logger
+from clarion.timeutils import utc_now
 
 logger = get_logger(__name__)
 
@@ -27,29 +29,32 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.debug = debug
     app.config["DATABASE_URL"] = database_url or settings.require_database_url()
-    _bootstrap_settings(app)
+
+    db_pool.open_pool(app.config["DATABASE_URL"])
+    with db_pool.connection() as conn:
+        ensure_schema(conn)
+        settings.load(conn)
     ensure_loaded()
     app.secret_key = settings.SESSION_SECRET or "clarion-local"
 
-    def open_db() -> LocalDatabase:
-        return LocalDatabase(app.config["DATABASE_URL"])
-
     @app.route("/")
     def dashboard():
-        db = open_db()
-        try:
-            snapshot = LocalRuntimeService(db).dashboard_snapshot()
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            last_check = state_store.get_last_check_time(conn)
+            snapshot = {
+                "processed_count": events_store.count(conn),
+                "last_check": last_check,
+                "monitoring_start": state_store.get_monitoring_start_time(conn),
+                "recent": events_store.recent(conn, limit=25),
+                "streams_count": len(streams_store.list_all(conn)),
+                "health": _daemon_health(last_check),
+            }
         return render_template("dashboard.html", **snapshot)
 
     @app.route("/digest")
     def digest_latest():
-        db = open_db()
-        try:
-            days = DigestReadService(db).available_days()
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            days = stories_store.available_days(conn)
         if not days:
             return render_template("digest.html", day=None)
         return redirect(url_for("digest_day", day=days[0].isoformat()))
@@ -69,19 +74,21 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
         per_page = 50
         offset = (page - 1) * per_page
 
-        db = open_db()
-        try:
-            svc = DigestReadService(db)
-            days = svc.available_days()
-            stats = svc.day_stats(day_val)
-            total = svc.story_count(day_val, lang=lang)
-            stories = svc.top_stories(day_val, lang=lang, limit=per_page, offset=offset)
-            members = svc.members_for([s["id"] for s in stories])
-            langs = svc.lang_counts(day_val)
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            days = stories_store.available_days(conn)
+            stats = stories_store.day_stats(conn, day_val)
+            total = stories_store.story_count(conn, day_val, lang=lang)
+            stories = stories_store.top_stories(
+                conn, day_val, lang=lang, limit=per_page, offset=offset
+            )
+            members = stories_store.members_for(conn, [s["id"] for s in stories])
+            langs = stories_store.lang_counts(conn, day_val)
 
-        # Distinct top domains per story, ordered by closeness to the story.
+        # Attach display domains; distinct top domains per story, ordered
+        # by closeness to the story.
+        for mlist in members.values():
+            for m in mlist:
+                m["domain"] = source_domain(m["url"], m["stream_name"])
         for s in stories:
             seen: list[str] = []
             for m in members.get(s["id"], []):
@@ -119,11 +126,8 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
             elif since_param is not None:
                 cursor = int(since_param)
             else:
-                db = open_db()
-                try:
-                    cursor = db.latest_event_id()
-                finally:
-                    db.close()
+                with db_pool.connection() as conn:
+                    cursor = events_store.latest_id(conn)
         except (ValueError, TypeError):
             cursor = 0
 
@@ -147,19 +151,17 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     def streams_activity():
         """Per-stream emission stats over a recent window.
 
-        Reads the last `window` rows of `live_events` (default 20k) and
-        groups item_received events by stream_name. Cheap because the
-        outer filter uses live_events' `id` BTREE index — the JSONB
-        extraction only runs on the windowed subset.
+        Reads the last `window` rows of `event` (default 20k) and groups
+        by stream_name. Cheap because the outer filter uses the `id`
+        BTREE index.
         """
         try:
             window = min(max(int(request.args.get("window", "20000")), 1000), 200000)
         except (TypeError, ValueError):
             window = 20000
 
-        db = open_db()
-        try:
-            with db.conn.cursor() as cur:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cur:
                 cur.execute("SELECT MAX(id) FROM event")
                 row = cur.fetchone()
                 max_id = (row["max"] if isinstance(row, dict) else row[0]) or 0
@@ -185,8 +187,6 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
                 )
                 total_row = cur.fetchone()
                 total = (total_row["c"] if isinstance(total_row, dict) else total_row[0]) or 0
-        finally:
-            db.close()
 
         # Compute rate per stream in items/min
         now = utc_now()
@@ -229,11 +229,8 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
 
     @app.route("/streams")
     def streams_page():
-        db = open_db()
-        try:
-            rows = LocalStreamService(db).list_stream_rows()
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            rows = describe_stream_rows(streams_store.list_all(conn))
 
         # Filters
         q = (request.args.get("q") or "").strip().lower()
@@ -316,10 +313,8 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
                 errors.append(f"Poll interval must be a number (got {poll_str!r}).")
                 poll_seconds = 300
 
-            db = open_db()
-            try:
-                service = LocalStreamService(db)
-                if name and service.get_stream(name):
+            with db_pool.connection() as conn:
+                if name and streams_store.get(conn, name):
                     errors.append(
                         f"You already have a stream named {name!r}. Pick a different name."
                     )
@@ -332,10 +327,8 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
                         errors.append(f"Invalid config: {exc}")
                         config = None
                     if config is not None:
-                        service.add_stream(name, "rss", config.model_dump_json())
+                        streams_store.add(conn, name, "rss", config.model_dump_json())
                         return redirect(url_for("streams_page"))
-            finally:
-                db.close()
 
             return render_template(
                 "new_rss_stream.html",
@@ -351,31 +344,27 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
 
     @app.route("/streams/<name>/toggle", methods=["POST"])
     def toggle_stream(name: str):
-        db = open_db()
-        try:
-            LocalStreamService(db).toggle_stream(name)
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            streams_store.toggle(conn, name)
         return redirect(url_for("streams_page"))
 
     @app.route("/streams/<name>/delete", methods=["POST"])
     def delete_stream(name: str):
-        db = open_db()
-        try:
-            LocalStreamService(db).delete_stream(name)
-        finally:
-            db.close()
+        with db_pool.connection() as conn:
+            streams_store.delete(conn, name)
         return redirect(url_for("streams_page"))
 
     return app
 
 
-def _bootstrap_settings(app: Flask) -> None:
-    db = LocalDatabase(app.config["DATABASE_URL"])
-    try:
-        settings.load(db)
-    finally:
-        db.close()
+def _daemon_health(last_check: Optional[datetime]) -> Dict[str, Any]:
+    if last_check is None:
+        return {"status": "never run", "ok": False}
+    age_s = (utc_now() - last_check).total_seconds()
+    threshold = max(3 * 60, 60)
+    if age_s < threshold:
+        return {"status": f"running (last check {int(age_s)}s ago)", "ok": True}
+    return {"status": f"stale (last check {int(age_s)}s ago)", "ok": False}
 
 
 def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
@@ -395,14 +384,18 @@ def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
 
 
 def _sse_poll_loop(database_url: str, cursor: int):
+    """Each SSE client gets a dedicated connection outside the pool: the
+    generator lives for the whole browser-tab lifetime and would starve a
+    small pool."""
+
     def generate():
         nonlocal cursor
         yield "retry: 3000\n: connected\n\n"
         heartbeat_countdown = 30
-        db = LocalDatabase(database_url)
+        conn = db_pool.raw_connection(database_url)
         try:
             while True:
-                rows = db.fetch_events_since(cursor, limit=200)
+                rows = events_store.fetch_since(conn, cursor, limit=200)
                 if rows:
                     for row in rows:
                         cursor = int(row["id"])
@@ -416,7 +409,7 @@ def _sse_poll_loop(database_url: str, cursor: int):
                         heartbeat_countdown = 30
                 time.sleep(0.5)
         finally:
-            db.close()
+            conn.close()
 
     return generate
 
@@ -427,7 +420,7 @@ def _sse_frame(event_id: int, event_type: str, payload_json: str) -> str:
 
 def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
     app = create_app(debug=debug)
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 def main() -> None:

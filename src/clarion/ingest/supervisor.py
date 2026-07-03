@@ -12,9 +12,12 @@ import signal
 import time
 from typing import Any, Dict, Optional
 
+from psycopg_pool import ConnectionPool
+
+from clarion.db.stores import state as state_store
+from clarion.db.stores import streams as streams_store
 from clarion.ingest.sources import Item, Stream, all_specs, build_stream, ensure_loaded
 from clarion.ingest.writer import EventWriter
-from clarion.local.database import LocalDatabase
 from clarion.logging import get_logger
 from clarion.timeutils import utc_now
 
@@ -31,9 +34,9 @@ _STREAM_REFRESH_SECONDS = 30
 
 
 class Supervisor:
-    def __init__(self, database: LocalDatabase):
+    def __init__(self, pool: ConnectionPool):
         ensure_loaded()
-        self.db = database
+        self.pool = pool
         self._shutdown = asyncio.Event()
         # Live registry of running stream tasks.  Hot-reload diffs this
         # against the DB snapshot every _STREAM_REFRESH_SECONDS.
@@ -56,8 +59,7 @@ class Supervisor:
         logger.info("Starting Clarion supervisor")
         self._install_signal_handlers()
 
-        if self.db.get_monitoring_start_time() is None:
-            self.db.set_monitoring_start_time(utc_now())
+        await asyncio.to_thread(self._init_monitoring_state)
 
         await self._refresh_streams(initial=True)
 
@@ -85,8 +87,17 @@ class Supervisor:
             except Exception as exc:
                 logger.warning("stream refresh failed: %s", exc)
 
+    def _init_monitoring_state(self) -> None:
+        with self.pool.connection() as conn:
+            if state_store.get_monitoring_start_time(conn) is None:
+                state_store.set_monitoring_start_time(conn, utc_now())
+
+    def _list_streams(self):
+        with self.pool.connection() as conn:
+            return streams_store.list_all(conn)
+
     async def _refresh_streams(self, initial: bool = False) -> None:
-        rows = await asyncio.to_thread(self.db.list_streams)
+        rows = await asyncio.to_thread(self._list_streams)
         supported_types = all_specs()
         unsupported = [r for r in rows if r["stream_type"] not in supported_types]
         if initial and unsupported:
@@ -162,7 +173,7 @@ class Supervisor:
         while not self._shutdown.is_set():
             try:
                 if self._writer is None:
-                    self._writer = EventWriter(self.db)
+                    self._writer = EventWriter(self.pool)
                 writer = self._writer
                 # Concurrency cap per stream. With many streams (700+),
                 # 64-per-stream multiplied = 45k+ items potentially in-flight.
@@ -232,7 +243,8 @@ class Supervisor:
             return
         self._last_check_ts_monotonic = now
         try:
-            self.db.update_last_check_time(utc_now())
+            with self.pool.connection() as conn:
+                state_store.set_last_check_time(conn, utc_now())
         except Exception as exc:
             logger.warning("update_last_check_time failed: %s", exc)
 
