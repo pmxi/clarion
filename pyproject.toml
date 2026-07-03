@@ -37,4 +37,5 @@ packages = [
 [dependency-groups]
 dev = [
     "mediacloud>=5.0.0",
+    "pytest>=8.0",
 ]
