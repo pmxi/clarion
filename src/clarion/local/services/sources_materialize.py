@@ -26,8 +26,8 @@ from typing import Any, Iterable, Optional
 import psycopg
 from psycopg.rows import dict_row
 
-from clarion.core.streams.rss.config import RSSStreamConfig
-from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.sources.rss.config import RSSStreamConfig
+from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
 
 SITEMAP_PREFIX = "src:"
 FEED_PREFIX = "src-feed:"

@@ -23,8 +23,8 @@ from xml.etree import ElementTree as ET
 import aiohttp
 
 from clarion.logging import get_logger
-from clarion.core.streams.base import Item, Stream
-from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.sources.base import Item, Stream
+from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
 from clarion.timeutils import utc_now
 
 logger = get_logger(__name__)

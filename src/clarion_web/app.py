@@ -11,8 +11,8 @@ from flask import Flask, Response, redirect, render_template, request, stream_wi
 from datetime import date
 
 from clarion.logging import get_logger
-from clarion.core.streams import ensure_loaded
-from clarion.core.streams.rss.config import RSSStreamConfig
+from clarion.ingest.sources import ensure_loaded
+from clarion.ingest.sources.rss.config import RSSStreamConfig
 from clarion.timeutils import utc_now
 from clarion.config import settings
 from clarion.local.database import LocalDatabase

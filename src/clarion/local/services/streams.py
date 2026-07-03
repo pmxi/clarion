@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from clarion.core.streams import all_specs, ensure_loaded
-from clarion.core.streams.rss.config import RSSStreamConfig
-from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.sources import all_specs, ensure_loaded
+from clarion.ingest.sources.rss.config import RSSStreamConfig
+from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
 from clarion.local.database import LocalDatabase
 
 

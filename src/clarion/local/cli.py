@@ -7,12 +7,12 @@ import asyncio
 import sys
 from typing import Optional
 
-from clarion.core.streams.rss.config import RSSStreamConfig
-from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.sources.rss.config import RSSStreamConfig
+from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
 from clarion.config import settings
+from clarion.ingest.supervisor import Supervisor
 from clarion.local.database import LocalDatabase
 from clarion.local.dev_firehose import FirehoseConfig, run_firehose
-from clarion.local.monitor import LocalMonitor
 from clarion.local.services.settings import LocalSetupService
 from clarion.local.services.sources_materialize import (
     MaterializeFilter,
@@ -171,7 +171,7 @@ def cmd_digest_build(args: argparse.Namespace) -> None:
 def cmd_run(_args: argparse.Namespace) -> None:
     db = _open_db()
     settings.load(db)
-    asyncio.run(LocalMonitor(db).run())
+    asyncio.run(Supervisor(db).run())
 
 
 def cmd_dev_firehose(args: argparse.Namespace) -> None:

@@ -13,5 +13,4 @@ class RSSStreamConfig(BaseModel):
     enabled: bool = True
     max_entries_per_poll: int = 50   # cap to avoid flooding on first poll
 
-    class Config:
-        use_enum_values = True
+    model_config = {"use_enum_values": True}
