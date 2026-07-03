@@ -10,7 +10,7 @@
     <strong>{{ "%.1f"|format(total_rate_per_sec) }}</strong> items/s overall
   </p>
 
-  <form method="get" action="{{ url_for('streams_activity') }}" style="margin-bottom: 1em;">
+  <form method="get" action="{{ url_for('streams.activity') }}" style="margin-bottom: 1em;">
     <label>Window (live_events to scan):
       <select name="window">
         <option value="5000"   {% if window == 5000 %}selected{% endif %}>5k</option>
@@ -21,7 +21,7 @@
       </select>
     </label>
     <button type="submit">Refresh</button>
-    <a href="{{ url_for('streams_page') }}" style="margin-left: 1em;">configured streams →</a>
+    <a href="{{ url_for('streams.index') }}" style="margin-left: 1em;">configured streams →</a>
   </form>
 
   {% if activity %}

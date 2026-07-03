@@ -260,7 +260,7 @@
     needsLeaderRender = true;
   }
 
-  const es = new EventSource("{{ url_for('events_stream') }}");
+  const es = new EventSource("{{ url_for('live.events_stream') }}");
   es.addEventListener("open", () => {
     connPulse.className = "pulse"; connText.textContent = "live";
   });
