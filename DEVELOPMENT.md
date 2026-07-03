@@ -46,6 +46,20 @@
 - Drop the now-unused `event.score` column **after** the next oracle deploy
   (the currently-deployed collector still names it in INSERTs; new code
   doesn't reference it).
+- Next deploy needs `uv sync` (new runtime dep: psycopg-pool). Entry
+  points and systemd units are unchanged.
+- Wire up Postgres backups (see DEPLOYMENT "Things that need watching") —
+  the event log is irreplaceable and lives on one VM disk. Highest-risk
+  open item.
+- Serve clarion-web with a real WSGI server (gunicorn/waitress) instead
+  of the Flask dev server; size the thread pool for SSE clients.
+- Reconsider first-poll suppression in the streams: it predates the
+  classifier's removal, and today it silently drops anything published
+  while the collector was down. The event table's dedup constraint makes
+  re-emission harmless. Better: persisted per-stream cursors + HTTP
+  conditional GET.
+- Failure alerting: a healthchecks.io-style ping (or systemd OnFailure →
+  push) so a dead collector isn't silent data loss.
 
 ## Future
 - If newsworthiness ranking is wanted again, reintroduce ML scoring /

@@ -1,4 +1,4 @@
-# tools/sources
+# clarion.catalog
 
 Mirror of the [Mediacloud](https://search.mediacloud.org/directory) source
 catalog, stored in the clarion postgres `sources` schema. Used as the seed
@@ -14,7 +14,7 @@ profile page. Free tier gives 4000 hits/week — enough for ~3 full syncs.
 ```sh
 export DATABASE_URL=postgresql://clarion_user:...@host:5432/clarion
 export MEDIACLOUD_API_KEY=<your-key>
-uv run python -m tools.sources.mediacloud_sync
+uv run clarion catalog sync
 ```
 
 Pulls every collection (~1.7k) and every source (~1M) and upserts into
@@ -30,7 +30,7 @@ existing snapshot into postgres without re-syncing from the API:
 
 ```sh
 export DATABASE_URL=postgresql://clarion_user:...@host:5432/clarion
-uv run python -m tools.sources.migrate_sqlite_to_postgres
+uv run clarion catalog migrate_sqlite_to_postgres
 ```
 
 Refuses to run against non-empty target tables. Streams via `COPY` — ~50s

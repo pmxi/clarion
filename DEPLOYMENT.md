@@ -83,7 +83,7 @@ ssh -fN -L 8766:localhost:8766 oracle
 open http://127.0.0.1:8766/
 ```
 
-For postgres access (e.g. running a CLI like `clarion sources
+For postgres access (e.g. running a CLI like `clarion catalog
 materialize` from your laptop) tunnel 5433 -> 5432 since 5432 is
 usually taken locally:
 
@@ -168,10 +168,11 @@ ssh oracle '
 
 ## Database schema
 
-The runtime schema is in **`src/clarion/local/schema.sql`** (applied
-idempotently at every supervisor startup via
-`LocalDatabase._create_tables`). The catalog schema lives in
-**`tools/sources/schema.sql`** (applied by the catalog tools).
+The runtime schema is in **`src/clarion/db/schema.sql`**, applied
+idempotently once per process startup (collector, web, `clarion init`)
+and on demand via `clarion db migrate` — never at connect time. The
+catalog schema lives in **`src/clarion/catalog/schema.sql`** (applied by
+the catalog tools).
 
 All tables use **singular names** as of the May-2026 migration.
 
@@ -182,7 +183,7 @@ All tables use **singular names** as of the May-2026 migration.
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
 | `story`, `story_article` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
-| `app_setting`, `local_setting` | Key-value config. |
+| `app_setting` | Key-value config (`local_setting` was dropped July 2026 — empty and unreferenced). |
 | `monitoring_state` | Collector heartbeats (`monitoring_start_time`, `last_check_time`). |
 | `schema_meta` | Schema-version pointer. |
 
@@ -275,20 +276,20 @@ Notes:
 
 ```bash
 # 1. (Once / occasionally) refresh the Media Cloud catalog
-MEDIACLOUD_API_KEY=... uv run python -m tools.sources.mediacloud_sync
+MEDIACLOUD_API_KEY=... uv run clarion catalog sync
 
 # 2. Walk publisher sitemaps to populate sources.source_sitemap
-uv run python -m tools.sources.discover_sitemaps --limit 10000 --min-spw 100 --concurrency 100
+uv run clarion catalog discover-sitemaps --limit 10000 --min-spw 100 --concurrency 100
 
 # 3. Walk homepages for RSS feeds — populates sources.source_feed
-uv run python -m tools.sources.discover_feeds --limit 10000 --min-spw 100 --concurrency 100
+uv run clarion catalog discover-feeds --limit 10000 --min-spw 100 --concurrency 100
 
 # 4. Turn catalog rows into runtime streams (idempotent)
-uv run clarion sources materialize --limit 500 --min-fresh 50
-uv run clarion sources materialize --feeds-only --limit 200
+uv run clarion catalog materialize --limit 500 --min-fresh 50
+uv run clarion catalog materialize --feeds-only --limit 200
 
 # Optional: drop materialized streams no longer matching a filter
-uv run clarion sources materialize --limit 100 --prune
+uv run clarion catalog materialize --limit 100 --prune
 ```
 
 The supervisor's hot-reload picks up new `stream` rows within 30s — no

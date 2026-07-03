@@ -18,13 +18,40 @@ def _imported_modules(path: Path) -> set[str]:
     return out
 
 
+def _offenders(package_dir: Path, forbidden_prefixes: tuple[str, ...]) -> list[str]:
+    out = []
+    for py in package_dir.rglob("*.py"):
+        for m in _imported_modules(py):
+            if any(m == p or m.startswith(p + ".") for p in forbidden_prefixes):
+                out.append(f"{py.relative_to(SRC)} imports {m}")
+    return out
+
+
 def test_clarion_never_imports_clarion_web():
-    offenders = [
-        str(py.relative_to(SRC))
-        for py in (SRC / "clarion").rglob("*.py")
-        if any(
-            m == "clarion_web" or m.startswith("clarion_web.")
-            for m in _imported_modules(py)
-        )
-    ]
+    offenders = _offenders(SRC / "clarion", ("clarion_web",))
     assert not offenders, f"clarion must not depend on clarion_web: {offenders}"
+
+
+def test_db_imports_no_domain():
+    offenders = _offenders(
+        SRC / "clarion" / "db",
+        ("clarion.ingest", "clarion.digest", "clarion.catalog", "clarion_web"),
+    )
+    assert not offenders, f"db must stay domain-free: {offenders}"
+
+
+def test_domains_do_not_import_each_other():
+    """One sanctioned exception: clarion.ingest.sources is the stream-type
+    contract (config schemas + registry) shared by catalog (writes stream
+    rows), the web (validates forms), and the collector (runs streams).
+    If the repo ever splits into distributions, that subpackage moves to
+    the shared core."""
+    domains = ("ingest", "digest", "catalog")
+    offenders = []
+    for d in domains:
+        others = tuple(f"clarion.{o}" for o in domains if o != d)
+        offenders += [
+            o for o in _offenders(SRC / "clarion" / d, others)
+            if "clarion.ingest.sources" not in o
+        ]
+    assert not offenders, f"domains must not import each other: {offenders}"

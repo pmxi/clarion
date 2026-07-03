@@ -54,7 +54,7 @@ For RSS, paste the feed URL and a poll interval. The source catalog can also
 materialize sitemap and RSS streams in bulk:
 
 ```bash
-uv run clarion sources materialize --limit 500 --min-fresh 50
+uv run clarion catalog materialize --limit 500 --min-fresh 50
 ```
 
 You can add RSS streams through the web UI once it is running.
