@@ -181,12 +181,15 @@ All tables use **singular names** as of the May-2026 migration.
 |---|---|
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
 | `story`, `story_article` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
-| `classification`, `classification_failure` | **Legacy** — retained for the historical data classified before classification was removed. No longer written to. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
 | `app_setting`, `local_setting` | Key-value config. |
 | `monitoring_state` | Collector heartbeats (`monitoring_start_time`, `last_check_time`). |
-| `telegram_link_token` | **Legacy** — unused since Telegram notifications were removed. |
 | `schema_meta` | Schema-version pointer. |
+
+The classifier-era tables (`classification`, `classification_failure`,
+`telegram_link_token`) were dropped in July 2026 — they were empty. The
+`event.score` column is also dead; drop it after the next deploy (see
+DEVELOPMENT.md).
 
 ### `sources` — Media Cloud catalog
 

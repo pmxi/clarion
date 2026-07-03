@@ -377,10 +377,8 @@ def _bootstrap_settings(app: Flask) -> None:
 
 
 def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
-    """Render an event row (LEFT JOINed with classification) into the
-    (event_type, payload_json) pair the SSE client expects. If the row
-    has classification fields populated we send item_classified;
-    otherwise item_received."""
+    """Render an event row into the (event_type, payload_json) pair the
+    SSE client expects."""
     payload: Dict[str, Any] = {
         "source_type": row.get("source_type"),
         "item_id": row.get("item_id"),
@@ -390,18 +388,8 @@ def _row_to_sse_payload(row: Dict[str, Any]) -> tuple[str, str]:
         "url": row.get("url"),
         "author": row.get("author"),
         "received_at": row.get("received_at").isoformat() if row.get("received_at") else None,
-        "score": row.get("score"),
     }
-    if row.get("priority"):
-        payload.update({
-            "priority": row.get("priority"),
-            "summary": row.get("summary") or "",
-            "reasoning": row.get("reasoning"),
-        })
-        event_type = "item_classified"
-    else:
-        event_type = "item_received"
-    return event_type, json.dumps(payload, default=str)
+    return "item_received", json.dumps(payload, default=str)
 
 
 def _sse_poll_loop(database_url: str, cursor: int):

@@ -16,14 +16,11 @@
   .live-feed { max-height: 80vh; overflow-y: auto; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; background: rgba(0,0,0,0.01); }
   .feed-item { padding: 0.6em 0.9em; border-bottom: 1px solid rgba(0,0,0,0.05); display: grid; grid-template-columns: 1fr auto; gap: 0.4em 1em; }
   .feed-item:last-child { border-bottom: none; }
-  .feed-item.important { background: linear-gradient(90deg, rgba(204,51,51,0.08), transparent); border-left: 3px solid #c33; padding-left: calc(0.9em - 3px); }
   .feed-item .ftitle { font-weight: 500; line-height: 1.3; }
   .feed-item .ftitle a { color: inherit; text-decoration: none; }
   .feed-item .ftitle a:hover { text-decoration: underline; }
   .feed-item .fmeta { font-size: 0.82em; opacity: 0.55; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
   .feed-item .fbody { grid-column: 1 / -1; font-size: 0.88em; opacity: 0.7; line-height: 1.4; }
-  .feed-item .ftag { display: inline-block; padding: 0 0.4em; border-radius: 3px; background: rgba(0,0,0,0.06); font-size: 0.75em; font-variant-numeric: tabular-nums; margin-right: 0.3em; }
-  .feed-item .ftag.important { background: rgba(204,51,51,0.18); color: #c33; font-weight: 600; }
   .feed-controls { display: flex; gap: 0.6em; align-items: center; margin-bottom: 0.8em; }
   .feed-controls input[type=text] { flex: 1; padding: 0.4em 0.6em; }
   .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2a2; }
@@ -48,7 +45,6 @@
     <div class="stat"><span class="stat-val" id="rate-1s">0</span><span class="stat-lbl">items / sec (5s avg)</span></div>
     <div class="stat"><span class="stat-val" id="rate-60s">0</span><span class="stat-lbl">items / min</span></div>
     <div class="stat"><span class="stat-val" id="total-seen">0</span><span class="stat-lbl">total seen (session)</span></div>
-    <div class="stat"><span class="stat-val" id="total-imp">0</span><span class="stat-lbl">important</span></div>
   </div>
 
   <div class="live-wrap">
@@ -100,7 +96,6 @@
   const rateBuf = [];
 
   let total_seen = 0;
-  let total_imp = 0;
   let activeType = null;   // null = all
   let activeStream = null; // null = all
   let q = "";
@@ -108,10 +103,9 @@
   let needsRender = false;
   let needsLeaderRender = true;
 
-  function recordItem(item, srcType, streamName, isImportant) {
+  function recordItem(item, srcType, streamName) {
     const now = performance.now();
     total_seen += 1;
-    if (isImportant) total_imp += 1;
     rateBuf.push(now);
 
     // Type stats
@@ -124,7 +118,7 @@
     if (!ss) { ss = {total: 0, lastTs: 0, srcType}; streamStats.set(streamName, ss); }
     ss.total += 1; ss.lastTs = now;
 
-    events.unshift({ts: now, srcType, streamName, item, important: isImportant});
+    events.unshift({ts: now, srcType, streamName, item});
     while (events.length > MAX_FEED_ITEMS * 4) events.pop();
   }
 
@@ -156,17 +150,14 @@
     const showBodies = showBodiesEl.checked;
     const html = shown.map(e => {
       const it = e.item;
-      const cls = e.important ? "feed-item important" : "feed-item";
-      const importantTag = e.important ? '<span class="ftag important">IMPORTANT</span>' : "";
-      const summary = e.important && it.summary ? `<div class="fbody">${escapeHtml(it.summary)}</div>` : "";
       const body = (showBodies && it.body) ? `<div class="fbody">${escapeHtml(it.body).slice(0, 500)}</div>` : "";
       const titleEl = it.url
         ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.title || "(no title)")}</a>`
         : escapeHtml(it.title || "(no title)");
-      return `<div class="${cls}">
-        <div class="ftitle">${importantTag}${titleEl}</div>
+      return `<div class="feed-item">
+        <div class="ftitle">${titleEl}</div>
         <div class="fmeta">${escapeHtml(e.srcType)} · ${escapeHtml(e.streamName || "?")}</div>
-        ${summary || body}
+        ${body}
       </div>`;
     }).join("");
     feedEl.innerHTML = html;
@@ -181,7 +172,6 @@
     const now = performance.now();
     pruneTs(rateBuf, now, RATE_WIN_60S_MS);
     document.getElementById("total-seen").textContent = total_seen.toLocaleString();
-    document.getElementById("total-imp").textContent = total_imp.toLocaleString();
     const recent5 = rateBuf.filter(t => t > now - RATE_WIN_5S_MS).length;
     document.getElementById("rate-1s").textContent = (recent5 / 5).toFixed(1);
     document.getElementById("rate-60s").textContent = rateBuf.length.toLocaleString();
@@ -262,41 +252,12 @@
     pauseBtn.textContent = paused ? "Resume" : "Pause";
   });
 
-  // Classified items arriving in real-time merge into the matching item if
-  // we still have it in the buffer, otherwise we just count them. The SSE
-  // stream sends both item_received and item_classified for each item.
   function handleItemReceived(item) {
     const srcType = item.source_type || "?";
     const streamName = item.stream_name || "(unknown)";
-    recordItem(item, srcType, streamName, false);
+    recordItem(item, srcType, streamName);
     needsRender = true;
     needsLeaderRender = true;
-  }
-
-  function handleItemClassified(payload) {
-    // payload looks like an Item flattened plus priority/summary/reasoning.
-    const itemId = payload.item_id;
-    const isImp = payload.priority === "important";
-    // Try to merge into the existing event (so the feed entry upgrades to
-    // important with summary), otherwise push as a fresh entry.
-    let merged = false;
-    for (let i = 0; i < Math.min(events.length, 500); i++) {
-      const e = events[i];
-      if (e.item && e.item.item_id === itemId) {
-        e.important = isImp;
-        e.item.priority = payload.priority;
-        e.item.summary = payload.summary;
-        e.item.reasoning = payload.reasoning;
-        if (isImp) total_imp += 1;
-        merged = true; break;
-      }
-    }
-    if (!merged) {
-      const srcType = payload.source_type || "?";
-      const streamName = payload.stream_name || "(unknown)";
-      recordItem(payload, srcType, streamName, isImp);
-    }
-    needsRender = true;
   }
 
   const es = new EventSource("{{ url_for('events_stream') }}");
@@ -309,10 +270,6 @@
   es.addEventListener("item_received", (ev) => {
     if (paused) return;
     try { handleItemReceived(JSON.parse(ev.data)); } catch (e) { console.error(e); }
-  });
-  es.addEventListener("item_classified", (ev) => {
-    if (paused) return;
-    try { handleItemClassified(JSON.parse(ev.data)); } catch (e) { console.error(e); }
   });
 
   // Initial render

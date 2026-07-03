@@ -43,14 +43,9 @@
 - Migrate the live `oracle` deployment off the legacy Sentinel names: checkout
   path, the now-two systemd units (`clarion` + `clarion-web`), environment
   path, Postgres database, and Postgres role.
-- Clean the inert `item_classified` SSE handlers and the permanently-empty
-  "IMPORTANT" column left in `clarion_web` `dashboard.html` / `live.html` after
-  classification was removed.
-- One-time DB cleanup for obsolete rows/settings: legacy `email` stream rows,
-  `RESEND_*` / `EMAIL_FROM_*` / `EMAIL_NOTIFICATION_TO` settings, and the
-  disabled `bluesky-firehose` stream row.
-- Add smoke tests for stream registration, CLI stream choices, and the
-  `clarion_web` route map. The refactor relied on manual checks.
+- Drop the now-unused `event.score` column **after** the next oracle deploy
+  (the currently-deployed collector still names it in INSERTs; new code
+  doesn't reference it).
 
 ## Future
 - If newsworthiness ranking is wanted again, reintroduce ML scoring /

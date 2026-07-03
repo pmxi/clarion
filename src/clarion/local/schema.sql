@@ -31,12 +31,6 @@ CREATE TABLE IF NOT EXISTS monitoring_state (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS telegram_link_token (
-    token TEXT PRIMARY KEY,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL
-);
-
 -- The core table. One row per observed item; replaces both the old
 -- `live_events` event log and the `processed_items` dedup ledger.
 -- (source_type, item_id) is the natural identity — uniqueness here gives
@@ -60,8 +54,6 @@ CREATE TABLE IF NOT EXISTS event (
     --   observed_at  = when clarion wrote this row
     received_at TIMESTAMPTZ NOT NULL,
     observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    -- Optional local-scorer probability of being newsworthy.
-    score REAL,
     -- Source-specific bag for anything we don't filter on (Bluesky lang,
     -- RSS feed_title, raw keywords list, ...). Use JSONB so we can still
     -- spot-check via ->> when needed.
@@ -105,32 +97,3 @@ CREATE TABLE IF NOT EXISTS story_article (
 
 CREATE INDEX IF NOT EXISTS story_article_event_idx ON story_article (event_id);
 
--- Per-event classification result. One row per event, present iff the
--- classifier ran successfully.
-CREATE TABLE IF NOT EXISTS classification (
-    event_id BIGINT PRIMARY KEY REFERENCES event(id) ON DELETE CASCADE,
-    priority TEXT NOT NULL CHECK (priority IN ('important', 'normal')),
-    summary TEXT,
-    reasoning TEXT,
-    -- Provenance: which model + prompt produced this; lets us reclassify
-    -- selectively when either changes.
-    model TEXT NOT NULL,
-    prompt_version SMALLINT NOT NULL DEFAULT 1,
-    classified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    latency_ms INTEGER
-);
-
-CREATE INDEX IF NOT EXISTS classification_classified_at_idx
-    ON classification (classified_at DESC);
--- Partial index — `important` is ~10% of rows and is the hot filter on /alerts.
-CREATE INDEX IF NOT EXISTS classification_important_idx
-    ON classification (classified_at DESC) WHERE priority = 'important';
-
--- Classifier failures get their own table so we can retry without bloating
--- the success path. Same FK shape as classification.
-CREATE TABLE IF NOT EXISTS classification_failure (
-    event_id BIGINT PRIMARY KEY REFERENCES event(id) ON DELETE CASCADE,
-    error TEXT NOT NULL,
-    attempts SMALLINT NOT NULL DEFAULT 1,
-    last_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);

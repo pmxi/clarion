@@ -319,7 +319,6 @@ class _LocalProcessingObserver(ProcessingObserver):
                         "url": item.url,
                         "author": item.author or None,
                         "received_at": item.received_at,
-                        "score": None,
                         "metadata": _filter_metadata(item.metadata),
                     }
                     for item in batch

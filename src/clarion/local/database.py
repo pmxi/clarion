@@ -55,9 +55,9 @@ def _with_reconnect(method: F) -> F:
 class LocalDatabase:
     """Single-user PostgreSQL store for local CLI + web surfaces.
 
-    Schema is in schema.sql. The two key tables are `event` (one row per
-    observed item, also the dedup ledger via UNIQUE(source_type,item_id))
-    and `classification` (LLM result, FK to event).
+    Schema is in schema.sql. The key table is `event` (one row per
+    observed item, also the dedup ledger via UNIQUE(source_type,item_id));
+    `story`/`story_article` hold the derived daily digest.
     """
 
     def __init__(self, database_url: str):
@@ -197,7 +197,6 @@ class LocalDatabase:
         url: Optional[str],
         author: Optional[str],
         received_at: datetime,
-        score: Optional[float] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         """Insert a new event. Returns its id, or None if (source_type, item_id)
@@ -207,13 +206,13 @@ class LocalDatabase:
             row = self.conn.execute(
                 """
                 INSERT INTO event (source_type, item_id, stream_name, title, body,
-                                   url, author, received_at, score, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                                   url, author, received_at, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 ON CONFLICT (source_type, item_id) DO NOTHING
                 RETURNING id
                 """,
                 (source_type, item_id, stream_name, title, body, url, author,
-                 received_at, score, metadata_json),
+                 received_at, metadata_json),
             ).fetchone()
         return int(row["id"]) if row else None
 
@@ -229,16 +228,16 @@ class LocalDatabase:
             params.append((
                 r["source_type"], r["item_id"], r["stream_name"], r["title"],
                 r.get("body"), r.get("url"), r.get("author"),
-                r["received_at"], r.get("score"),
+                r["received_at"],
                 json.dumps(md) if md else None,
             ))
-        placeholders = ",".join(["(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)"] * len(params))
+        placeholders = ",".join(["(%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)"] * len(params))
         flat: List[Any] = [v for row in params for v in row]
         with self._lock:
             inserted = self.conn.execute(
                 f"""
                 INSERT INTO event (source_type, item_id, stream_name, title, body,
-                                   url, author, received_at, score, metadata)
+                                   url, author, received_at, metadata)
                 VALUES {placeholders}
                 ON CONFLICT (source_type, item_id) DO NOTHING
                 RETURNING id
@@ -270,19 +269,15 @@ class LocalDatabase:
         return int(row["mx"])
 
     def fetch_events_since(self, after_id: int, limit: int = 200) -> List[Dict[str, Any]]:
-        """Used by the SSE poll loop. Pulls events + (left-joined) classification
-        so the caller has everything it needs in one round trip."""
+        """Used by the SSE poll loop."""
         with self._lock:
             rows = self.conn.execute(
                 """
-                SELECT e.id, e.source_type, e.item_id, e.stream_name, e.title,
-                       e.body, e.url, e.author, e.received_at, e.observed_at,
-                       e.score, e.metadata,
-                       c.priority, c.summary, c.reasoning, c.classified_at
-                FROM event e
-                LEFT JOIN classification c ON c.event_id = e.id
-                WHERE e.id > %s
-                ORDER BY e.id ASC LIMIT %s
+                SELECT id, source_type, item_id, stream_name, title,
+                       body, url, author, received_at, observed_at, metadata
+                FROM event
+                WHERE id > %s
+                ORDER BY id ASC LIMIT %s
                 """,
                 (after_id, limit),
             ).fetchall()
@@ -292,51 +287,6 @@ class LocalDatabase:
     # event table. Events are append-only and kept indefinitely; capacity is
     # handled at the infrastructure level, not by deleting rows. See the
     # comment in monitor.py.
-
-    # ----- classification -----------------------------------------------
-
-    def insert_classification(
-        self,
-        *,
-        event_id: int,
-        priority: str,
-        summary: Optional[str],
-        reasoning: Optional[str],
-        model: str,
-        latency_ms: Optional[int] = None,
-        prompt_version: int = 1,
-    ) -> None:
-        with self._lock:
-            self.conn.execute(
-                """
-                INSERT INTO classification
-                    (event_id, priority, summary, reasoning, model, prompt_version, latency_ms)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (event_id) DO UPDATE SET
-                    priority = excluded.priority,
-                    summary = excluded.summary,
-                    reasoning = excluded.reasoning,
-                    model = excluded.model,
-                    prompt_version = excluded.prompt_version,
-                    classified_at = NOW(),
-                    latency_ms = excluded.latency_ms
-                """,
-                (event_id, priority, summary, reasoning, model, prompt_version, latency_ms),
-            )
-
-    def insert_classification_failure(self, event_id: int, error: str) -> None:
-        with self._lock:
-            self.conn.execute(
-                """
-                INSERT INTO classification_failure (event_id, error, attempts, last_failed_at)
-                VALUES (%s, %s, 1, NOW())
-                ON CONFLICT (event_id) DO UPDATE SET
-                    error = excluded.error,
-                    attempts = classification_failure.attempts + 1,
-                    last_failed_at = NOW()
-                """,
-                (event_id, error[:5000]),
-            )
 
     # ----- monitoring_state --------------------------------------------
 
