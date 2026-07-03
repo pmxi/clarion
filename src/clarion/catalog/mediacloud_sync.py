@@ -2,7 +2,7 @@
 
 Usage:
     DATABASE_URL=postgresql://... MEDIACLOUD_API_KEY=... \\
-        uv run python -m tools.sources.mediacloud_sync
+        uv run python -m clarion.catalog.mediacloud_sync
 
 Pulls every collection (~1.7k) and every source (~1M) and upserts them
 into sources.collection / sources.source. Idempotent: a fresh run
@@ -22,9 +22,9 @@ from typing import Any, Iterable
 
 import psycopg
 
-from tools.sources.canonicalize import canonical_domain
-from tools.sources.client import MediacloudClient
-from tools.sources.db import open_db
+from clarion.catalog.canonicalize import canonical_domain
+from clarion.catalog.client import MediacloudClient
+from clarion.catalog.db import open_db
 
 logger = logging.getLogger("mediacloud_sync")
 
@@ -201,14 +201,14 @@ def print_summary(conn: psycopg.Connection) -> None:
             print(f"  {row['k'] or '(none)':<8} {row['c']:>8,}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--collections-only",
         action="store_true",
         help="skip the (large) source pull, sync collections only",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO,

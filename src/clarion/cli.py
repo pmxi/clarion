@@ -111,7 +111,23 @@ def _prompt_rss_stream() -> str:
     return config.model_dump_json()
 
 
-def cmd_sources_materialize(args: argparse.Namespace) -> None:
+def cmd_catalog_sync(args: argparse.Namespace) -> None:
+    # Lazy: pulls the mediacloud client (dev-group dependency).
+    from clarion.catalog.mediacloud_sync import main as sync_main
+    raise SystemExit(sync_main(args.args))
+
+
+def cmd_catalog_discover_sitemaps(args: argparse.Namespace) -> None:
+    from clarion.catalog.discover_sitemaps import main as discover_main
+    raise SystemExit(discover_main(args.args))
+
+
+def cmd_catalog_discover_feeds(args: argparse.Namespace) -> None:
+    from clarion.catalog.discover_feeds import main as discover_main
+    raise SystemExit(discover_main(args.args))
+
+
+def cmd_catalog_materialize(args: argparse.Namespace) -> None:
     kinds = tuple(args.kind) if args.kind else ("news",)
     # --sitemaps-only and --feeds-only are mutually exclusive shortcuts.
     include_sitemaps = not args.feeds_only
@@ -226,13 +242,27 @@ def build_parser() -> argparse.ArgumentParser:
     rm.add_argument("name")
     rm.set_defaults(func=cmd_stream_remove)
 
-    sources = sub.add_parser(
-        "sources",
-        help="Manage the Media Cloud sitemap catalog",
+    catalog = sub.add_parser(
+        "catalog",
+        help="Manage the Media Cloud source catalog",
     )
-    sources_sub = sources.add_subparsers(dest="sources_cmd", required=True)
+    catalog_sub = catalog.add_subparsers(dest="catalog_cmd", required=True)
 
-    mat = sources_sub.add_parser(
+    for cmd_name, cmd_func, cmd_help in (
+        ("sync", cmd_catalog_sync, "Sync the Media Cloud publisher catalog"),
+        ("discover-sitemaps", cmd_catalog_discover_sitemaps,
+         "Walk publisher sitemaps into sources.source_sitemap"),
+        ("discover-feeds", cmd_catalog_discover_feeds,
+         "Walk publisher homepages for RSS feeds into sources.source_feed"),
+    ):
+        passthrough = catalog_sub.add_parser(
+            cmd_name,
+            help=cmd_help + " (flags are forwarded to the underlying tool)",
+        )
+        passthrough.add_argument("args", nargs=argparse.REMAINDER)
+        passthrough.set_defaults(func=cmd_func, passthrough=True)
+
+    mat = catalog_sub.add_parser(
         "materialize",
         help="Materialize catalog sitemaps into sitemap_news streams",
     )
@@ -269,7 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Delete src:* / src-feed:* streams no longer matching the filter",
     )
-    mat.set_defaults(func=cmd_sources_materialize, kind=None)
+    mat.set_defaults(func=cmd_catalog_materialize, kind=None)
 
     digest = sub.add_parser("digest", help="Build the daily story digest")
     digest_sub = digest.add_subparsers(dest="digest_cmd", required=True)
@@ -357,8 +387,20 @@ def _database_label() -> str:
     return f"{scheme_and_user.rsplit(':', maxsplit=1)[0]}:***@{host_and_db}"
 
 
+def parse_cli(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """Parse argv, forwarding unrecognized flags to passthrough commands
+    (the catalog tools own their argparse surfaces)."""
+    parser = build_parser()
+    args, extra = parser.parse_known_args(argv)
+    if getattr(args, "passthrough", False):
+        args.args = list(extra) + list(getattr(args, "args", None) or [])
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    return args
+
+
 def main() -> None:
-    args = build_parser().parse_args()
+    args = parse_cli()
     try:
         args.func(args)
     except KeyboardInterrupt:

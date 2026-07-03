@@ -9,9 +9,9 @@ A candidate URL is only persisted to sources.source_feed after a fetch
 returns a body that feedparser can parse as RSS / Atom / RDF.
 
 Usage:
-    uv run python -m tools.sources.discover_feeds --limit 100 --min-spw 100
-    uv run python -m tools.sources.discover_feeds --domains bbc.com,nytimes.com
-    MEDIACLOUD_API_KEY=... uv run python -m tools.sources.discover_feeds \
+    uv run python -m clarion.catalog.discover_feeds --limit 100 --min-spw 100
+    uv run python -m clarion.catalog.discover_feeds --domains bbc.com,nytimes.com
+    MEDIACLOUD_API_KEY=... uv run python -m clarion.catalog.discover_feeds \
         --limit 10000 --min-spw 100 --concurrency 100 --mediacloud-fallback
 """
 
@@ -32,7 +32,7 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 import feedparser
 
-from tools.sources.db import open_db
+from clarion.catalog.db import open_db
 
 logger = logging.getLogger("discover_feeds")
 
@@ -274,11 +274,11 @@ async def discover_for_source(
 
 
 class MediacloudFeedFetcher:
-    """Thin wrapper that uses tools.sources.client.MediacloudClient and
+    """Thin wrapper that uses clarion.catalog.client.MediacloudClient and
     runs the sync API call in a thread to avoid blocking the event loop."""
 
     def __init__(self) -> None:
-        from tools.sources.client import MediacloudClient
+        from clarion.catalog.client import MediacloudClient
         self.client = MediacloudClient()
 
     async def feeds_for(self, source_id: int) -> list[str]:
@@ -465,7 +465,7 @@ async def main_async(args) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=20, help="max sources to walk (ignored if --domains)")
     parser.add_argument("--min-spw", type=int, default=50, help="minimum stories_per_week")
@@ -482,7 +482,7 @@ def main() -> int:
         help="If local discovery yields nothing, fall back to MC feed_list. "
              "Requires MEDIACLOUD_API_KEY in env.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     return asyncio.run(main_async(args))
