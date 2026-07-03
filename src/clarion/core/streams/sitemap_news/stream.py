@@ -22,10 +22,10 @@ from xml.etree import ElementTree as ET
 
 import aiohttp
 
-from clarion.core.logging_config import get_logger
+from clarion.logging import get_logger
 from clarion.core.streams.base import Item, Stream
 from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
-from clarion.core.time_utils import utc_now
+from clarion.timeutils import utc_now
 
 logger = get_logger(__name__)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from clarion.core.time_utils import utc_now
+from clarion.timeutils import utc_now
 from clarion.local.database import LocalDatabase
 
 

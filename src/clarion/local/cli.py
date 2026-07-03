@@ -9,7 +9,7 @@ from typing import Optional
 
 from clarion.core.streams.rss.config import RSSStreamConfig
 from clarion.core.streams.sitemap_news.config import SitemapNewsStreamConfig
-from clarion.local.config import settings
+from clarion.config import settings
 from clarion.local.database import LocalDatabase
 from clarion.local.dev_firehose import FirehoseConfig, run_firehose
 from clarion.local.monitor import LocalMonitor

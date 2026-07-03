@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from clarion.core.logging_config import get_logger
+from clarion.logging import get_logger
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
 from clarion.digest.text import normalize_lang, normalize_title, source_domain

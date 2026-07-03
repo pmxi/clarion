@@ -12,11 +12,11 @@ import signal
 import time
 from typing import Any, Dict, List, Optional
 
-from clarion.core.logging_config import get_logger
+from clarion.logging import get_logger
 from clarion.core import ProcessingEvent
 from clarion.core.processing import ProcessingObserver
 from clarion.core.streams import Item, Stream, build_stream, ensure_loaded
-from clarion.core.time_utils import utc_now
+from clarion.timeutils import utc_now
 from clarion.local.database import LocalDatabase
 from clarion.local.services.streams import LocalStreamService
 

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 load_dotenv()
 
 
-class LocalSettings:
+class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     LOG_LEVEL: str = "INFO"
@@ -48,4 +48,4 @@ def _coerce(raw: str, target: type) -> Any:
     return raw
 
 
-settings = LocalSettings()
+settings = Settings()

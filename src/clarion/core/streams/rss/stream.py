@@ -14,10 +14,10 @@ from typing import Any, AsyncIterator
 import aiohttp
 import feedparser  # type: ignore
 
-from clarion.core.logging_config import get_logger
+from clarion.logging import get_logger
 from clarion.core.streams.base import Item, Stream
 from clarion.core.streams.rss.config import RSSStreamConfig
-from clarion.core.time_utils import utc_now
+from clarion.timeutils import utc_now
 
 logger = get_logger(__name__)
 

@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 import psycopg
 from psycopg.rows import dict_row
 
-from clarion.core.time_utils import format_iso_datetime, parse_iso_datetime, utc_now
+from clarion.timeutils import format_iso_datetime, parse_iso_datetime, utc_now
 
 _CURRENT_SCHEMA_VERSION = 3
 _RECONNECT_BACKOFF_BASE = 0.5

@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from clarion.core.time_utils import utc_now
+from clarion.timeutils import utc_now
 from clarion.local.database import LocalDatabase
 
 _TOPICS = (
