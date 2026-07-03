@@ -12,7 +12,7 @@ from datetime import date
 
 from clarion.logging import get_logger
 from clarion.ingest.sources import ensure_loaded
-from clarion.ingest.sources.rss.config import RSSStreamConfig
+from clarion.ingest.sources import get as get_stream_spec
 from clarion.timeutils import utc_now
 from clarion.config import settings
 from clarion.local.database import LocalDatabase
@@ -325,7 +325,9 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
                     )
                 if not errors:
                     try:
-                        config = RSSStreamConfig(feed_url=feed_url, poll_seconds=poll_seconds)
+                        config = get_stream_spec("rss").config_cls(
+                            feed_url=feed_url, poll_seconds=poll_seconds
+                        )
                     except Exception as exc:
                         errors.append(f"Invalid config: {exc}")
                         config = None

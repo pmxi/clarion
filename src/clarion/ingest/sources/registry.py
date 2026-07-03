@@ -7,8 +7,8 @@ accounts of that type. New stream types register themselves here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Type
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Type
 
 from pydantic import BaseModel
 
@@ -22,6 +22,9 @@ class StreamSpec:
     stream_type: str
     config_cls: Type[BaseModel]
     stream_cls: Type[Stream]
+    # One-line human description of a config (the polled URL, typically).
+    # Lets consumers render stream lists without importing config classes.
+    describe: Callable[[BaseModel], str] = field(default=lambda cfg: "")
 
 
 _REGISTRY: Dict[str, StreamSpec] = {}
@@ -74,6 +77,7 @@ def _register_builtins() -> None:
             stream_type="rss",
             config_cls=RSSStreamConfig,
             stream_cls=RSSStream,
+            describe=lambda cfg: str(cfg.feed_url),
         )
     )
     register(
@@ -81,6 +85,7 @@ def _register_builtins() -> None:
             stream_type="sitemap_news",
             config_cls=SitemapNewsStreamConfig,
             stream_cls=SitemapNewsStream,
+            describe=lambda cfg: cfg.sitemap_url,
         )
     )
 
@@ -88,3 +93,29 @@ def _register_builtins() -> None:
 def ensure_loaded() -> None:
     """Call before looking up specs; idempotent."""
     _register_builtins()
+
+
+def describe_stream_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Decorate raw `stream` table rows for display: parsed enabled flag,
+    a one-line detail, and any config-validation error. Registry-driven —
+    no per-type branching at call sites."""
+    ensure_loaded()
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        entry = {
+            "name": row["name"],
+            "stream_type": row["stream_type"],
+            "enabled": True,
+            "detail": "",
+            "error": None,
+        }
+        try:
+            spec = get(row["stream_type"])
+            cfg = spec.config_cls.model_validate_json(row["config_json"])
+            entry["enabled"] = getattr(cfg, "enabled", True)
+            entry["detail"] = spec.describe(cfg)
+        except Exception as exc:
+            entry["error"] = str(exc)
+            entry["enabled"] = False
+        out.append(entry)
+    return out

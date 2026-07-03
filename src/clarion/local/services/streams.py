@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from clarion.ingest.sources import all_specs, ensure_loaded
-from clarion.ingest.sources.rss.config import RSSStreamConfig
-from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.sources import describe_stream_rows, ensure_loaded
 from clarion.local.database import LocalDatabase
 
 
@@ -16,35 +14,8 @@ class LocalStreamService:
         self.db = db
         ensure_loaded()
 
-    def specs(self):
-        return all_specs()
-
     def list_stream_rows(self) -> List[Dict[str, Any]]:
-        rows = []
-        for row in self.db.list_streams():
-            entry = {
-                "name": row["name"],
-                "stream_type": row["stream_type"],
-                "enabled": True,
-                "detail": "",
-                "error": None,
-            }
-            try:
-                if row["stream_type"] == "rss":
-                    cfg = RSSStreamConfig.model_validate_json(row["config_json"])
-                    entry["enabled"] = cfg.enabled
-                    entry["detail"] = str(cfg.feed_url)
-                elif row["stream_type"] == "sitemap_news":
-                    cfg = SitemapNewsStreamConfig.model_validate_json(row["config_json"])
-                    entry["enabled"] = cfg.enabled
-                    entry["detail"] = cfg.sitemap_url
-                else:
-                    raise ValueError(f"Unsupported stream type: {row['stream_type']}")
-            except Exception as exc:
-                entry["error"] = str(exc)
-                entry["enabled"] = False
-            rows.append(entry)
-        return rows
+        return describe_stream_rows(self.db.list_streams())
 
     def add_stream(self, name: str, stream_type: str, config_json: str) -> None:
         if self.db.get_stream(name):
