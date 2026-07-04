@@ -113,7 +113,7 @@ class SitemapNewsStream(Stream):
             body_lines.append(f"Keywords: {', '.join(entry.keywords)}")
         return Item(
             id=entry.url,
-            source_type="sitemap_news",
+            source_type=self.source_type,
             title=entry.title,
             body="\n".join(body_lines) + "\n",
             author=publication,

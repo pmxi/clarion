@@ -129,7 +129,7 @@ class RSSStream(Stream):
 
         return Item(
             id=str(entry_id),
-            source_type="rss",
+            source_type=self.source_type,
             title=title,
             body=body,
             author=author,
