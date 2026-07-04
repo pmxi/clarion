@@ -1,4 +1,4 @@
-"""Materialize Media Cloud catalog rows into runtime `streams`.
+"""Materialize Media Cloud catalog rows into the runtime `stream` table.
 
 Two source surfaces feed this command:
   * `sources.source_sitemap` (kind='news' by default) -> sitemap_news streams
@@ -26,6 +26,8 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import HttpUrl
 
+from clarion.db import pool as db_pool
+from clarion.db.stores import streams as streams_store
 from clarion.ingest.sources.rss.config import RSSStreamConfig
 from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
 
@@ -212,16 +214,6 @@ def _config_payload(c: Candidate) -> str:
     return cfg.model_dump_json()
 
 
-def _existing_managed(conn: psycopg.Connection[Any], prefixes: tuple[str, ...]) -> dict[str, dict[str, str]]:
-    with conn.cursor(row_factory=dict_row) as cur:
-        sql = " UNION ALL ".join(
-            "SELECT name, source_type, config_json::text AS config_json FROM stream WHERE name LIKE %s"
-            for _ in prefixes
-        )
-        cur.execute(sql, [p + "%" for p in prefixes])
-        return {r["name"]: r for r in cur.fetchall()}
-
-
 def plan(
     conn: psycopg.Connection[Any],
     flt: MaterializeFilter,
@@ -242,7 +234,7 @@ def plan(
         active_prefixes.append(SITEMAP_PREFIX)
     if include_feeds:
         active_prefixes.append(FEED_PREFIX)
-    existing = _existing_managed(conn, tuple(active_prefixes)) if active_prefixes else {}
+    existing = {r["name"]: r for r in streams_store.list_by_prefix(conn, active_prefixes)}
 
     to_add: list[str] = []
     to_update: list[str] = []
@@ -277,24 +269,8 @@ def apply(conn: psycopg.Connection[Any], result: MaterializeResult) -> None:
         (name, names_to_cand[name].source_type, _config_payload(names_to_cand[name]))
         for name in result.to_add + result.to_update
     ]
-    with conn.cursor() as cur:
-        # Single executemany so we round-trip once for 1000s of upserts
-        # instead of once per row (a ~10-100x speedup over a slow link).
-        if upsert_params:
-            cur.executemany(
-                """
-                INSERT INTO stream (name, source_type, config_json, updated_at)
-                VALUES (%s, %s, %s::jsonb, NOW())
-                ON CONFLICT(name) DO UPDATE SET
-                    source_type = excluded.source_type,
-                    config_json = excluded.config_json,
-                    updated_at  = NOW()
-                """,
-                upsert_params,
-            )
-        if result.to_prune:
-            cur.executemany("DELETE FROM stream WHERE name = %s",
-                            [(name,) for name in result.to_prune])
+    streams_store.upsert_many(conn, upsert_params)
+    streams_store.delete_many(conn, result.to_prune)
 
 
 def materialize(
@@ -305,8 +281,8 @@ def materialize(
     dry_run: bool = False,
     prune: bool = False,
 ) -> MaterializeResult:
-    with psycopg.connect(database_url) as conn:
-        conn.autocommit = True
+    pool = db_pool.open_pool(database_url)
+    with pool.connection() as conn:
         result = plan(conn, flt, include_sitemaps=include_sitemaps,
                       include_feeds=include_feeds, prune=prune)
         if not dry_run:
