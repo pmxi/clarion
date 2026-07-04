@@ -1,4 +1,4 @@
-"""Daily story digest tables (`story`, `story_article`).
+"""Daily story digest tables (`story`, `story_event`).
 
 Writes are per-day replacements (delete day + reinsert in one
 transaction), matching the digest builder's idempotent-rebuild contract.
@@ -20,7 +20,7 @@ _STORY_CHUNK = 500
 
 def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict[str, Any]]) -> None:
     """Replace one day's stories. Each story dict carries title,
-    rep_event_id, article_count, source_count, lang, and members —
+    rep_event_id, event_count, source_count, lang, and members —
     a list of (event_id, similarity) pairs."""
     with conn.transaction():
         with conn.cursor() as cur:
@@ -32,10 +32,10 @@ def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict
                 flat: List[Any] = []
                 for s in chunk:
                     flat.extend((day, s["title"], s["rep_event_id"],
-                                 s["article_count"], s["source_count"], s["lang"]))
+                                 s["event_count"], s["source_count"], s["lang"]))
                 cur.execute(
                     f"""
-                    INSERT INTO story (day, title, rep_event_id, article_count,
+                    INSERT INTO story (day, title, rep_event_id, event_count,
                                        source_count, lang)
                     VALUES {placeholders}
                     RETURNING id, rep_event_id
@@ -47,7 +47,7 @@ def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict
                 for r in cur.fetchall():
                     id_by_rep[int(r["rep_event_id"])] = int(r["id"])
             with cur.copy(
-                "COPY story_article (story_id, event_id, similarity) FROM STDIN"
+                "COPY story_event (story_id, event_id, similarity) FROM STDIN"
             ) as copy:
                 for s in stories:
                     sid = id_by_rep[s["rep_event_id"]]
@@ -67,7 +67,7 @@ def day_stats(conn: psycopg.Connection[DictRow], day: date) -> Dict[str, Any]:
     row = conn.execute(
         """
         SELECT COUNT(*) AS stories,
-               COALESCE(SUM(article_count), 0) AS articles,
+               COALESCE(SUM(event_count), 0) AS events,
                MAX(built_at) AS built_at
         FROM story WHERE day = %s
         """,
@@ -96,7 +96,7 @@ def top_stories(
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
     sql = """
-        SELECT s.id, s.title, s.article_count, s.source_count, s.lang,
+        SELECT s.id, s.title, s.event_count, s.source_count, s.lang,
                e.url AS rep_url, e.received_at AS rep_received_at
         FROM story s
         JOIN event e ON e.id = s.rep_event_id
@@ -106,7 +106,7 @@ def top_stories(
     if lang:
         sql += " AND s.lang = %s"
         params.append(lang)
-    sql += " ORDER BY s.source_count DESC, s.article_count DESC, s.id LIMIT %s OFFSET %s"
+    sql += " ORDER BY s.source_count DESC, s.event_count DESC, s.id LIMIT %s OFFSET %s"
     params.extend((limit, offset))
     rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
@@ -139,7 +139,7 @@ def members_for(
                        PARTITION BY sa.story_id
                        ORDER BY sa.similarity DESC, e.id
                    ) AS rn
-            FROM story_article sa
+            FROM story_event sa
             JOIN event e ON e.id = sa.event_id
             WHERE sa.story_id = ANY(%s)
         ) ranked

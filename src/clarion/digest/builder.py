@@ -33,7 +33,7 @@ class DigestConfig:
     threshold: float = 0.92
     batch_size: int = 128          # encoder batch
     cluster_batch: int = 1024      # GEMM batch for greedy clustering
-    min_articles: int = 2          # don't persist singleton clusters
+    min_events: int = 2          # don't persist singleton clusters
     device: Optional[str] = None
     cache_dir: Optional[Path] = Path("artifacts")
     limit: Optional[int] = None    # dev: cap the number of events
@@ -57,7 +57,7 @@ class DigestStats:
 class _Story:
     title: str
     rep_event_id: int
-    article_count: int
+    event_count: int
     source_count: int
     lang: Optional[str]
     domains: List[str] = field(default_factory=list)
@@ -108,7 +108,7 @@ def build_digest(
         {
             "title": s.title,
             "rep_event_id": s.rep_event_id,
-            "article_count": s.article_count,
+            "event_count": s.event_count,
             "source_count": s.source_count,
             "lang": s.lang,
             "members": s.members,
@@ -241,7 +241,7 @@ def _aggregate(
 
     stories: List[_Story] = []
     for cid, idxs in enumerate(members):
-        if len(idxs) < config.min_articles:
+        if len(idxs) < config.min_events:
             continue
         domains = Counter(source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
         langs = Counter(lang for k in idxs if (lang := normalize_lang(rows[k]["lang"])))
@@ -249,7 +249,7 @@ def _aggregate(
         stories.append(_Story(
             title=normalize_title(rows[medoid]["title"]),
             rep_event_id=int(rows[medoid]["id"]),
-            article_count=len(idxs),
+            event_count=len(idxs),
             source_count=len(domains),
             lang=langs.most_common(1)[0][0] if langs else None,
             domains=[d for d, _ in domains.most_common(6)],
@@ -263,14 +263,14 @@ def _aggregate(
 
 
 def _print_preview(stories: List[_Story], stats: DigestStats, top: int = 30) -> None:
-    ranked = sorted(stories, key=lambda s: (-s.source_count, -s.article_count))
+    ranked = sorted(stories, key=lambda s: (-s.source_count, -s.event_count))
     print(
         f"\n{stats.day}: {stats.n_events} events -> {stats.n_clusters} clusters "
         f"-> {len(stories)} stories with >=2 articles "
         f"(embed {stats.seconds_embed:.1f}s, cluster {stats.seconds_cluster:.1f}s)\n"
     )
     for rank, s in enumerate(ranked[:top], 1):
-        print(f"{rank:3d}. [{s.source_count:3d} sources / {s.article_count:4d} articles]"
+        print(f"{rank:3d}. [{s.source_count:3d} sources / {s.event_count:4d} articles]"
               f" ({s.lang or '??'}) {s.title[:110]}")
         for t in s.sample_titles[1:4]:
             if t != s.title:

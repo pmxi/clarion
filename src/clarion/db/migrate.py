@@ -27,7 +27,17 @@ BEGIN
                  AND column_name = 'stream_type') THEN
         ALTER TABLE stream RENAME COLUMN stream_type TO source_type;
     END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'story'
+                 AND column_name = 'article_count') THEN
+        ALTER TABLE story RENAME COLUMN article_count TO event_count;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+               WHERE table_schema = 'public' AND table_name = 'story_article') THEN
+        ALTER TABLE story_article RENAME TO story_event;
+    END IF;
 END $$;
+ALTER INDEX IF EXISTS story_article_event_idx RENAME TO story_event_event_id_idx;
 """
 
 

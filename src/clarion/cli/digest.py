@@ -28,7 +28,7 @@ def cmd_digest_build(args: argparse.Namespace) -> None:
         model_name=args.model,
         threshold=args.threshold,
         batch_size=args.batch_size,
-        min_articles=args.min_articles,
+        min_events=args.min_events,
         device=args.device,
         cache_dir=None if args.no_cache else Path(args.cache_dir),
         limit=args.limit,
@@ -67,7 +67,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     )
     dbuild.add_argument("--batch-size", type=int, default=128, help="Encoder batch size")
     dbuild.add_argument(
-        "--min-articles", type=int, default=2,
+        "--min-events", type=int, default=2,
         help="Only persist stories with at least this many articles (default: 2)",
     )
     dbuild.add_argument("--device", default=None, help="Torch device override (e.g. cpu, mps)")

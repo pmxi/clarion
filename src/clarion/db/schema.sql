@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS story (
     -- Representative headline (the cluster medoid's title).
     title TEXT NOT NULL,
     rep_event_id BIGINT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
-    article_count INTEGER NOT NULL,
+    event_count INTEGER NOT NULL,
     -- Distinct publication domains covering the story — the ranking signal.
     source_count INTEGER NOT NULL,
     -- Dominant language among members (from event metadata), if known.
@@ -82,15 +82,15 @@ CREATE TABLE IF NOT EXISTS story (
 );
 
 CREATE INDEX IF NOT EXISTS story_day_rank_idx
-    ON story (day, source_count DESC, article_count DESC);
+    ON story (day, source_count DESC, event_count DESC);
 
-CREATE TABLE IF NOT EXISTS story_article (
+CREATE TABLE IF NOT EXISTS story_event (
     story_id BIGINT NOT NULL REFERENCES story(id) ON DELETE CASCADE,
     event_id BIGINT NOT NULL REFERENCES event(id) ON DELETE CASCADE,
-    -- Cosine similarity of this article's title to the story centroid.
+    -- Cosine similarity of the member event's title to the story centroid.
     similarity REAL,
     PRIMARY KEY (story_id, event_id)
 );
 
-CREATE INDEX IF NOT EXISTS story_article_event_idx ON story_article (event_id);
+CREATE INDEX IF NOT EXISTS story_event_event_id_idx ON story_event (event_id);
 

@@ -28,7 +28,7 @@
   <p class="hint">
     {{ "{:,}".format(total) }} stories
     {% if lang %}in <strong>{{ lang }}</strong>{% endif %}
-    &middot; {{ "{:,}".format(stats.articles) }} articles clustered
+    &middot; {{ "{:,}".format(stats.events) }} articles clustered
     &middot; ranked by breadth of coverage (distinct publications)
     {% if stats.built_at %}&middot; built {{ stats.built_at.strftime("%H:%M UTC") }}{% endif %}
   </p>
@@ -55,7 +55,7 @@
       </div>
       <div class="story-meta">
         <strong>{{ s.source_count }}</strong> source{{ "s" if s.source_count != 1 }}
-        &middot; {{ s.article_count }} article{{ "s" if s.article_count != 1 }}
+        &middot; {{ s.event_count }} article{{ "s" if s.event_count != 1 }}
         {% if s.lang %}&middot; {{ s.lang }}{% endif %}
         {% if s.top_domains %}&middot; {{ s.top_domains | join(", ") }}{% endif %}
       </div>
@@ -71,8 +71,8 @@
             <span class="muted">{{ m.domain }}</span>
           </li>
           {% endfor %}
-          {% if s.article_count > mlist | length %}
-          <li class="muted">&hellip; and {{ s.article_count - mlist | length }} more</li>
+          {% if s.event_count > mlist | length %}
+          <li class="muted">&hellip; and {{ s.event_count - mlist | length }} more</li>
           {% endif %}
         </ul>
       </details>
