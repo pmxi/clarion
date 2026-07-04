@@ -40,6 +40,27 @@ def test_db_imports_no_domain():
     assert not offenders, f"db must stay domain-free: {offenders}"
 
 
+def test_web_imports_only_the_sanctioned_surface():
+    """The web app reaches clarion only through db, the stream registry,
+    the flat utilities, and digest.text (dependency-free display helpers)."""
+    allowed = (
+        "clarion.config",
+        "clarion.db",
+        "clarion.digest.text",
+        "clarion.ingest.sources",
+        "clarion.logging",
+        "clarion.timeutils",
+    )
+    offenders = []
+    for py in (SRC / "clarion_web").rglob("*.py"):
+        for m in _imported_modules(py):
+            if m != "clarion" and not m.startswith("clarion."):
+                continue
+            if not any(m == a or m.startswith(a + ".") for a in allowed):
+                offenders.append(f"{py.relative_to(SRC)} imports {m}")
+    assert not offenders, f"web must use the sanctioned surface only: {offenders}"
+
+
 def test_domains_do_not_import_each_other():
     """One sanctioned exception: clarion.ingest.sources is the stream-type
     contract (config schemas + registry) shared by catalog (writes stream

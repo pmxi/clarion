@@ -31,8 +31,11 @@ Import rules (enforced by `tests/test_import_boundaries.py`):
   `clarion.ingest.sources` (stream config schemas + registry) is the
   shared stream-type contract, importable by catalog and the web.
 - `clarion` never imports `clarion_web`; the web app reaches the rest
-  of the system only through `db.stores` and the stream registry.
-- DDL runs only via `clarion.db.migrate` (process startup or
-  `clarion db migrate`) — never at connect time.
+  of the system only through `db`, the stream registry, the flat
+  utilities, and `digest.text` (dependency-free display helpers).
+- DDL for the runtime schema runs only via `clarion.db.migrate`
+  (process startup or `clarion db migrate`) — never at connect time.
+  The offline catalog tools own the separate `sources` schema and
+  apply `catalog/schema.sql` themselves in `catalog.db.open_db()`.
 
 Run the tests with `uv run pytest`.
