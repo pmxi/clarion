@@ -17,7 +17,7 @@ def cmd_init(_args: argparse.Namespace) -> None:
         ensure_schema(conn)
         settings.load(conn)
         if not settings_store.get(conn, "SESSION_SECRET"):
-            settings_store.set(conn, "SESSION_SECRET", secrets.token_hex(32))
+            settings_store.put(conn, "SESSION_SECRET", secrets.token_hex(32))
     print("\nSetup complete.")
     print("  - Add an RSS feed: clarion stream add --type rss")
     print("  - Start collector: clarion run")

@@ -35,7 +35,7 @@ class Settings:
     def load(cls, conn: "psycopg.Connection[DictRow]") -> None:
         from clarion.db.stores import settings as settings_store
 
-        for key, raw in settings_store.all(conn).items():
+        for key, raw in settings_store.load_all(conn).items():
             if not hasattr(cls, key):
                 continue
             default = getattr(cls, key)

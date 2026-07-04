@@ -13,7 +13,7 @@ def get(conn: psycopg.Connection[DictRow], key: str) -> Optional[str]:
     return row["value"] if row else None
 
 
-def set(conn: psycopg.Connection[DictRow], key: str, value: str) -> None:
+def put(conn: psycopg.Connection[DictRow], key: str, value: str) -> None:
     conn.execute(
         "INSERT INTO app_setting (key, value, updated_at) "
         "VALUES (%s, %s, NOW()) "
@@ -22,6 +22,6 @@ def set(conn: psycopg.Connection[DictRow], key: str, value: str) -> None:
     )
 
 
-def all(conn: psycopg.Connection[DictRow]) -> Dict[str, str]:
+def load_all(conn: psycopg.Connection[DictRow]) -> Dict[str, str]:
     rows = conn.execute("SELECT key, value FROM app_setting").fetchall()
     return {r["key"]: r["value"] for r in rows}
