@@ -40,7 +40,7 @@ class Supervisor:
         # Live registry of running stream tasks.  Hot-reload diffs this
         # against the DB snapshot every _STREAM_REFRESH_SECONDS.
         self._stream_tasks: Dict[str, asyncio.Task] = {}
-        # (stream_type, config_json) per running stream — config drift
+        # (source_type, config_json) per running stream — config drift
         # detection without re-parsing JSON every refresh.
         self._stream_config_sig: Dict[str, tuple[str, str]] = {}
         # Throttle for the per-item liveness write to monitoring_state.
@@ -98,15 +98,15 @@ class Supervisor:
     async def _refresh_streams(self, initial: bool = False) -> None:
         rows = await asyncio.to_thread(self._list_streams)
         supported_types = all_specs()
-        unsupported = [r for r in rows if r["stream_type"] not in supported_types]
+        unsupported = [r for r in rows if r["source_type"] not in supported_types]
         if initial and unsupported:
             logger.warning(
                 "Ignoring %d unsupported stream row(s): %s",
                 len(unsupported),
-                ", ".join(sorted({r["stream_type"] for r in unsupported})),
+                ", ".join(sorted({r["source_type"] for r in unsupported})),
             )
         desired: Dict[str, Dict[str, Any]] = {
-            r["name"]: r for r in rows if r["stream_type"] in supported_types
+            r["name"]: r for r in rows if r["source_type"] in supported_types
         }
 
         # Cancel tasks for streams that no longer exist.
@@ -117,7 +117,7 @@ class Supervisor:
         added = 0
         updated = 0
         for name, row in desired.items():
-            sig = (row["stream_type"], row["config_json"])
+            sig = (row["source_type"], row["config_json"])
             running = self._stream_tasks.get(name)
             if running is None or running.done():
                 self._start_stream(name, row)
@@ -139,14 +139,14 @@ class Supervisor:
     def _start_stream(self, name: str, row: Dict[str, Any]) -> None:
         try:
             stream = build_stream(
-                stream_type=row["stream_type"],
+                source_type=row["source_type"],
                 name=row["name"],
                 config_json=row["config_json"],
             )
         except Exception as exc:
             logger.error(
                 "Failed to build stream %r (type=%s): %s",
-                name, row["stream_type"], exc,
+                name, row["source_type"], exc,
             )
             return
         task = asyncio.create_task(
@@ -154,7 +154,7 @@ class Supervisor:
             name=f"stream:{name}",
         )
         self._stream_tasks[name] = task
-        self._stream_config_sig[name] = (row["stream_type"], row["config_json"])
+        self._stream_config_sig[name] = (row["source_type"], row["config_json"])
 
     async def _stop_stream(self, name: str, *, reason: str) -> None:
         task = self._stream_tasks.pop(name, None)

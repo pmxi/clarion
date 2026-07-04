@@ -1,6 +1,6 @@
 """Stream-type registry.
 
-Maps the `stream_type` string stored in the `stream` table to the
+Maps the `source_type` string stored in the `stream` table to the
 (Stream class, config class) pair that knows how to build and validate
 streams of that type. New stream types register themselves here.
 """
@@ -19,7 +19,7 @@ from clarion.ingest.sources.base import Stream
 class StreamSpec:
     """Describes how to instantiate and configure one stream type."""
 
-    stream_type: str
+    source_type: str
     config_cls: Type[BaseModel]
     # The Stream subclass; typed as a callable because each subclass takes
     # its own config class in __init__.
@@ -34,15 +34,15 @@ _REGISTRY: Dict[str, StreamSpec] = {}
 
 
 def register(spec: StreamSpec) -> None:
-    if spec.stream_type in _REGISTRY:
-        raise ValueError(f"Stream type {spec.stream_type!r} already registered")
-    _REGISTRY[spec.stream_type] = spec
+    if spec.source_type in _REGISTRY:
+        raise ValueError(f"Stream type {spec.source_type!r} already registered")
+    _REGISTRY[spec.source_type] = spec
 
 
-def get(stream_type: str) -> StreamSpec:
-    if stream_type not in _REGISTRY:
-        raise KeyError(f"Unknown stream type: {stream_type!r}")
-    return _REGISTRY[stream_type]
+def get(source_type: str) -> StreamSpec:
+    if source_type not in _REGISTRY:
+        raise KeyError(f"Unknown stream type: {source_type!r}")
+    return _REGISTRY[source_type]
 
 
 def all_specs() -> Dict[str, StreamSpec]:
@@ -50,13 +50,13 @@ def all_specs() -> Dict[str, StreamSpec]:
 
 
 def build_stream(
-    stream_type: str,
+    source_type: str,
     name: str,
     config_json: str,
     **extra: Any,
 ) -> Stream:
     """Instantiate a stream from serialized config."""
-    spec = get(stream_type)
+    spec = get(source_type)
     config = spec.config_cls.model_validate_json(config_json)
     return spec.stream_cls(
         name=name,
@@ -77,7 +77,7 @@ def _register_builtins() -> None:
 
     register(
         StreamSpec(
-            stream_type="rss",
+            source_type="rss",
             config_cls=RSSStreamConfig,
             stream_cls=RSSStream,
             describe=lambda cfg: str(cfg.feed_url),
@@ -85,7 +85,7 @@ def _register_builtins() -> None:
     )
     register(
         StreamSpec(
-            stream_type="sitemap_news",
+            source_type="sitemap_news",
             config_cls=SitemapNewsStreamConfig,
             stream_cls=SitemapNewsStream,
             describe=lambda cfg: cfg.sitemap_url,
@@ -107,13 +107,13 @@ def describe_stream_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for row in rows:
         entry = {
             "name": row["name"],
-            "stream_type": row["stream_type"],
+            "source_type": row["source_type"],
             "enabled": True,
             "detail": "",
             "error": None,
         }
         try:
-            spec = get(row["stream_type"])
+            spec = get(row["source_type"])
             cfg = spec.config_cls.model_validate_json(row["config_json"])
             entry["enabled"] = getattr(cfg, "enabled", True)
             entry["detail"] = spec.describe(cfg)

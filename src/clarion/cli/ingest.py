@@ -30,7 +30,7 @@ def cmd_stream_list(_args: argparse.Namespace) -> None:
     for row in rows:
         status = "enabled" if row["enabled"] else "disabled"
         detail = row["error"] or row["detail"]
-        print(f"  {row['name']:20s} {row['stream_type']:8s} ({status})  {detail}")
+        print(f"  {row['name']:20s} {row['source_type']:8s} ({status})  {detail}")
 
 
 def cmd_stream_remove(args: argparse.Namespace) -> None:
@@ -40,11 +40,11 @@ def cmd_stream_remove(args: argparse.Namespace) -> None:
 
 
 def cmd_stream_add(args: argparse.Namespace) -> None:
-    stream_type = args.type
-    if not stream_type:
+    source_type = args.type
+    if not source_type:
         print("Stream types: (1) rss  (2) sitemap_news")
         choice = prompt("Choose stream type", default="1")
-        stream_type = {
+        source_type = {
             "1": "rss",
             "2": "sitemap_news",
             "rss": "rss",
@@ -55,9 +55,9 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
     if not name:
         raise SystemExit("Stream name is required.")
 
-    if stream_type == "rss":
+    if source_type == "rss":
         config_json = _prompt_rss_stream()
-    elif stream_type == "sitemap_news":
+    elif source_type == "sitemap_news":
         sitemap_url = prompt("Sitemap URL (e.g. https://www.bloomberg.com/sitemaps/news/latest.xml)")
         publication = prompt("Publication display name", default=name)
         config_json = get_stream_spec("sitemap_news").config_cls(
@@ -65,11 +65,11 @@ def cmd_stream_add(args: argparse.Namespace) -> None:
             publication_name=publication,
         ).model_dump_json()
     else:
-        raise SystemExit(f"Unknown stream type: {stream_type!r}")
+        raise SystemExit(f"Unknown stream type: {source_type!r}")
 
     with open_pool().connection() as conn:
-        streams_store.add(conn, name, stream_type, config_json)
-    print(f"\nAdded stream {name!r} (type={stream_type}).")
+        streams_store.add(conn, name, source_type, config_json)
+    print(f"\nAdded stream {name!r} (type={source_type}).")
 
 
 def _prompt_rss_stream() -> str:

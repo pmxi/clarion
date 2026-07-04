@@ -30,14 +30,14 @@ def index():
     enabled_count = 0
     error_count = 0
     for r in rows:
-        type_counts[r["stream_type"]] = type_counts.get(r["stream_type"], 0) + 1
+        type_counts[r["source_type"]] = type_counts.get(r["source_type"], 0) + 1
         if r["enabled"]:
             enabled_count += 1
         if r["error"]:
             error_count += 1
 
     def keep(r) -> bool:
-        if type_filter and r["stream_type"] != type_filter:
+        if type_filter and r["source_type"] != type_filter:
             return False
         if status == "enabled" and not r["enabled"]:
             return False

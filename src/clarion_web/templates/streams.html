@@ -45,7 +45,7 @@
       {% for s in streams %}
         <tr>
           <td>{{ s.name }}</td>
-          <td>{{ s.stream_type }}</td>
+          <td>{{ s.source_type }}</td>
           <td style="max-width: 36em; overflow: hidden; text-overflow: ellipsis;">
             {% if s.error %}<em>invalid: {{ s.error }}</em>{% else %}{{ s.detail }}{% endif %}
           </td>

@@ -68,11 +68,11 @@ class Candidate:
     publication_name: str
     primary_language: Optional[str]
     pub_country: Optional[str]
-    stream_type: str              # 'sitemap_news' | 'rss'
+    source_type: str              # 'sitemap_news' | 'rss'
 
     @property
     def name_prefix(self) -> str:
-        return SITEMAP_PREFIX if self.stream_type == "sitemap_news" else FEED_PREFIX
+        return SITEMAP_PREFIX if self.source_type == "sitemap_news" else FEED_PREFIX
 
     def stream_name(self, suffix_if_collide: bool) -> str:
         base = f"{self.name_prefix}{self.canonical_domain}"
@@ -133,7 +133,7 @@ def _select_sitemap_candidates(conn: psycopg.Connection[Any], flt: MaterializeFi
             publication_name=r["publication_name"] or r["canonical_domain"],
             primary_language=r["primary_language"],
             pub_country=r["pub_country"],
-            stream_type="sitemap_news",
+            source_type="sitemap_news",
         )
         for r in rows
     ]
@@ -177,7 +177,7 @@ def _select_feed_candidates(conn: psycopg.Connection[Any], flt: MaterializeFilte
             publication_name=r["publication_name"] or r["canonical_domain"],
             primary_language=r["primary_language"],
             pub_country=r["pub_country"],
-            stream_type="rss",
+            source_type="rss",
         )
         for r in rows
     ]
@@ -185,20 +185,20 @@ def _select_feed_candidates(conn: psycopg.Connection[Any], flt: MaterializeFilte
 
 def assign_names(candidates: list[Candidate]) -> dict[Candidate, str]:
     """Stable name assignment. Append URL-hash suffix only when a (domain,
-    stream_type) pair has more than one matching candidate."""
+    source_type) pair has more than one matching candidate."""
     bucket: dict[tuple[str, str], int] = {}
     for c in candidates:
-        key = (c.canonical_domain, c.stream_type)
+        key = (c.canonical_domain, c.source_type)
         bucket[key] = bucket.get(key, 0) + 1
     return {
-        c: c.stream_name(suffix_if_collide=bucket[(c.canonical_domain, c.stream_type)] > 1)
+        c: c.stream_name(suffix_if_collide=bucket[(c.canonical_domain, c.source_type)] > 1)
         for c in candidates
     }
 
 
 def _config_payload(c: Candidate) -> str:
     poll = adaptive_poll_seconds(c.stories_per_week)
-    if c.stream_type == "sitemap_news":
+    if c.source_type == "sitemap_news":
         cfg = SitemapNewsStreamConfig(
             sitemap_url=c.target_url,
             publication_name=c.publication_name,
@@ -215,7 +215,7 @@ def _config_payload(c: Candidate) -> str:
 def _existing_managed(conn: psycopg.Connection[Any], prefixes: tuple[str, ...]) -> dict[str, dict[str, str]]:
     with conn.cursor(row_factory=dict_row) as cur:
         sql = " UNION ALL ".join(
-            "SELECT name, stream_type, config_json::text AS config_json FROM stream WHERE name LIKE %s"
+            "SELECT name, source_type, config_json::text AS config_json FROM stream WHERE name LIKE %s"
             for _ in prefixes
         )
         cur.execute(sql, [p + "%" for p in prefixes])
@@ -256,7 +256,7 @@ def plan(
         prior = existing.get(name)
         if prior is None:
             to_add.append(name)
-        elif prior["stream_type"] != c.stream_type or prior["config_json"] != payload:
+        elif prior["source_type"] != c.source_type or prior["config_json"] != payload:
             to_update.append(name)
         else:
             unchanged.append(name)
@@ -274,7 +274,7 @@ def plan(
 def apply(conn: psycopg.Connection[Any], result: MaterializeResult) -> None:
     names_to_cand = {assign_names(result.candidates)[c]: c for c in result.candidates}
     upsert_params = [
-        (name, names_to_cand[name].stream_type, _config_payload(names_to_cand[name]))
+        (name, names_to_cand[name].source_type, _config_payload(names_to_cand[name]))
         for name in result.to_add + result.to_update
     ]
     with conn.cursor() as cur:
@@ -283,10 +283,10 @@ def apply(conn: psycopg.Connection[Any], result: MaterializeResult) -> None:
         if upsert_params:
             cur.executemany(
                 """
-                INSERT INTO stream (name, stream_type, config_json, updated_at)
+                INSERT INTO stream (name, source_type, config_json, updated_at)
                 VALUES (%s, %s, %s::jsonb, NOW())
                 ON CONFLICT(name) DO UPDATE SET
-                    stream_type = excluded.stream_type,
+                    source_type = excluded.source_type,
                     config_json = excluded.config_json,
                     updated_at  = NOW()
                 """,
@@ -317,8 +317,8 @@ def materialize(
 def format_plan(result: MaterializeResult, dry_run: bool) -> str:
     lines: list[str] = []
     verb = "would" if dry_run else "will"
-    sitemap_count = sum(1 for c in result.candidates if c.stream_type == "sitemap_news")
-    feed_count = sum(1 for c in result.candidates if c.stream_type == "rss")
+    sitemap_count = sum(1 for c in result.candidates if c.source_type == "sitemap_news")
+    feed_count = sum(1 for c in result.candidates if c.source_type == "rss")
     lines.append(f"Matched {len(result.candidates)} candidate(s)  (sitemaps={sitemap_count}, rss={feed_count})")
     lines.append(f"  {verb} add:       {len(result.to_add)}")
     lines.append(f"  {verb} update:    {len(result.to_update)}")
@@ -339,7 +339,7 @@ def format_plan(result: MaterializeResult, dry_run: bool) -> str:
                 tag = f"{c.primary_language or '?'}/{c.pub_country or '?'}"
                 poll = adaptive_poll_seconds(c.stories_per_week)
                 lines.append(
-                    f"  {n:<55s} {c.stream_type:<14s} {tag:<10s} "
+                    f"  {n:<55s} {c.source_type:<14s} {tag:<10s} "
                     f"spw={c.stories_per_week or 0:<5d} poll={poll}s  {c.target_url}"
                 )
         lines.append("")

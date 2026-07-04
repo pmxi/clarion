@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS app_setting (
 
 CREATE TABLE IF NOT EXISTS stream (
     name TEXT PRIMARY KEY,
-    stream_type TEXT NOT NULL,
+    -- Which stream implementation handles this row ('rss', 'sitemap_news');
+    -- the same enum event.source_type carries.
+    source_type TEXT NOT NULL,
     config_json JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

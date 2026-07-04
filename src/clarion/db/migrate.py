@@ -13,10 +13,26 @@ import psycopg
 from psycopg.rows import DictRow
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+
+# Conditional renames that bring a pre-v5 database up to the vocabulary
+# schema.sql now uses. schema.sql alone can't rename (its DDL is all
+# IF NOT EXISTS), so these run first. Each is a no-op once applied;
+# drop the block when every deployment is past v4.
+_RENAMES = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'stream'
+                 AND column_name = 'stream_type') THEN
+        ALTER TABLE stream RENAME COLUMN stream_type TO source_type;
+    END IF;
+END $$;
+"""
 
 
 def ensure_schema(conn: psycopg.Connection[DictRow]) -> None:
+    conn.execute(_RENAMES)
     conn.execute(SCHEMA_PATH.read_bytes())
     conn.execute(
         "INSERT INTO schema_meta (key, value) VALUES ('schema_version', %s) "
