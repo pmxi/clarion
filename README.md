@@ -78,7 +78,7 @@ uv run clarion digest build --day yesterday
 This clusters one UTC day's articles into stories: titles are embedded
 with a multilingual encoder (EmbeddingGemma-300m by default), grouped by
 cosine similarity, and ranked by how many distinct publications covered
-them. Results land in the `story` / `story_article` tables; rebuilding a
+them. Results land in the `story` / `story_event` tables; rebuilding a
 day is idempotent. Use `--dry-run` to preview the top clusters in the
 terminal, and `--day today` to rebuild the current day as it grows.
 

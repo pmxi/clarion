@@ -101,7 +101,7 @@ To close a tunnel: `pkill -f 'ssh -fN -L 8766'` (or the matching port).
 | Path | What |
 |---|---|
 | `/digest` | Daily story digest — redirects to the latest built day. |
-| `/digest/<date>` | Stories for one UTC day, ranked by distinct-publication coverage; language filter + pagination. Reads `story` / `story_article` only, so it needs a `clarion digest build` to have run for that day. |
+| `/digest/<date>` | Stories for one UTC day, ranked by distinct-publication coverage; language filter + pagination. Reads `story` / `story_event` only, so it needs a `clarion digest build` to have run for that day. |
 | `/` | Original dashboard (status + 2-column live feed). |
 | `/live` | Multi-source live monitor with sidebar (filter by source type + top stream), full-text search, rate counters. |
 | `/streams` | Stream-row management — search/filter/paginate; toggle/delete. |
@@ -181,7 +181,7 @@ All tables use **singular names** as of the May-2026 migration.
 | Table | Purpose |
 |---|---|
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
-| `story`, `story_article` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
+| `story`, `story_event` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
 | `app_setting` | Key-value config (`local_setting` was dropped July 2026 — empty and unreferenced). |
 | `monitoring_state` | Collector heartbeats (`monitoring_start_time`, `last_check_time`). |
@@ -189,8 +189,9 @@ All tables use **singular names** as of the May-2026 migration.
 
 The classifier-era tables (`classification`, `classification_failure`,
 `telegram_link_token`) were dropped in July 2026 — they were empty. The
-`event.score` column is also dead; drop it after the next deploy (see
-DEVELOPMENT.md).
+dead `event.score` column is dropped by the v5 migration, which also
+renamed `stream.stream_type`→`source_type`, `story.article_count`→
+`event_count`, and `story_article`→`story_event`.
 
 ### `sources` — Media Cloud catalog
 
@@ -200,7 +201,7 @@ DEVELOPMENT.md).
 | `collection`, `source_collection` | MC topic groupings (membership empty in v1). |
 | `source_sitemap` | Discovered Google News sitemaps (`kind` ∈ news/index/urlset/...). |
 | `source_feed` | Validated RSS/Atom feeds per source. |
-| `sync_run`, `discovery_run`, `feed_discovery_run` | Audit trail rows for the catalog/discovery tools. |
+| `sync_run`, `sitemap_discovery_run`, `feed_discovery_run` | Audit trail rows for the catalog/discovery tools. |
 
 ### Running a migration
 
@@ -228,7 +229,7 @@ reference but isn't meant to re-run.
 
 `clarion digest build` is the third process: a batch job that embeds one
 UTC day's titles (EmbeddingGemma-300m, multilingual), clusters them into
-stories, and writes `story` / `story_article`. The web `/digest` pages
+stories, and writes `story` / `story_event`. The web `/digest` pages
 read only those tables, so the web unit needs no new dependencies — but
 the build job needs the ML extra:
 
