@@ -43,9 +43,6 @@
 - Migrate the live `oracle` deployment off the legacy Sentinel names: checkout
   path, the now-two systemd units (`clarion` + `clarion-web`), environment
   path, Postgres database, and Postgres role.
-- Drop the now-unused `event.score` column **after** the next oracle deploy
-  (the currently-deployed collector still names it in INSERTs; new code
-  doesn't reference it).
 - Next deploy needs `uv sync` (new runtime dep: psycopg-pool). Entry
   points and systemd units are unchanged.
 - Next deploy also applies the v5 vocabulary renames at startup
