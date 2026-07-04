@@ -48,6 +48,13 @@
   doesn't reference it).
 - Next deploy needs `uv sync` (new runtime dep: psycopg-pool). Entry
   points and systemd units are unchanged.
+- Next deploy also applies the v5 vocabulary renames at startup
+  (`stream.stream_type`→`source_type`, `story.article_count`→`event_count`,
+  `story_article`→`story_event`, `sources.discovery_run`→
+  `sitemap_discovery_run`). The renames happen the moment new code first
+  touches the DB, and old code can't read the renamed columns — so update
+  and restart the collector and web units together, not one at a time.
+  `clarion digest build --min-articles` is now `--min-events`.
 - Wire up Postgres backups (see DEPLOYMENT "Things that need watching") —
   the event log is irreplaceable and lives on one VM disk. Highest-risk
   open item.
