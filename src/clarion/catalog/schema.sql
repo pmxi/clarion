@@ -1,7 +1,7 @@
--- Mediacloud source catalog. Lives in the `sources` schema of the clarion
+-- Media Cloud source catalog. Lives in the `sources` schema of the clarion
 -- postgres database. Re-derivable: safe to drop and re-sync.
 -- All tables use singular names. Booleans are BOOLEAN. ISO timestamps are
--- TIMESTAMPTZ (with the one exception of source.last_story which Mediacloud
+-- TIMESTAMPTZ (with the one exception of source.last_story which Media Cloud
 -- returns in a non-ISO format).
 
 CREATE SCHEMA IF NOT EXISTS sources;
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS sources.discovery_run (
 --   1. `<link rel="alternate" type="application/(rss|atom|rdf)+xml">` in
 --      the homepage HTML.
 --   2. common paths (/feed, /rss, /feed.xml, /atom.xml, /index.xml)
---   3. Mediacloud feed_list as last-resort fallback (if MC API key present)
+--   3. Media Cloud feed_list as last-resort fallback (if MC API key present)
 -- A feed only lands here after it parses as RSS / Atom / RDF.
 CREATE TABLE IF NOT EXISTS sources.source_feed (
     source_id INTEGER NOT NULL REFERENCES sources.source(id) ON DELETE CASCADE,

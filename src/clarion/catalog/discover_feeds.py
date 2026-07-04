@@ -208,7 +208,7 @@ async def discover_for_source(
     session: aiohttp.ClientSession,
     source_id: int,
     homepage: str,
-    mc_fallback: "MediacloudFeedFetcher | None",
+    mc_fallback: "MediaCloudFeedFetcher | None",
 ) -> list[DiscoveredFeed]:
     """Try homepage → common paths → MC fallback. Returns validated feeds."""
     found: list[DiscoveredFeed] = []
@@ -251,7 +251,7 @@ async def discover_for_source(
                 found.append(DiscoveredFeed(url, "common_path", fr, info))
                 break  # one common-path feed is enough; rest is noise
 
-    # 3. Mediacloud fallback as last resort
+    # 3. Media Cloud fallback as last resort
     if not found and mc_fallback is not None:
         try:
             mc_urls = await mc_fallback.feeds_for(source_id)
@@ -273,13 +273,13 @@ async def discover_for_source(
     return found
 
 
-class MediacloudFeedFetcher:
-    """Thin wrapper that uses clarion.catalog.client.MediacloudClient and
+class MediaCloudFeedFetcher:
+    """Thin wrapper that uses clarion.catalog.client.MediaCloudClient and
     runs the sync API call in a thread to avoid blocking the event loop."""
 
     def __init__(self) -> None:
-        from clarion.catalog.client import MediacloudClient
-        self.client = MediacloudClient()
+        from clarion.catalog.client import MediaCloudClient
+        self.client = MediaCloudClient()
 
     async def feeds_for(self, source_id: int) -> list[str]:
         loop = asyncio.get_running_loop()
@@ -390,13 +390,13 @@ async def main_async(args) -> int:
     assert row is not None  # INSERT ... RETURNING always yields a row
     run_id = row["id"]
 
-    mc_fallback: MediacloudFeedFetcher | None = None
+    mc_fallback: MediaCloudFeedFetcher | None = None
     if args.mediacloud_fallback:
         if not os.environ.get("MEDIACLOUD_API_KEY"):
             print("--mediacloud-fallback requested but MEDIACLOUD_API_KEY is unset; disabling", file=sys.stderr)
         else:
             try:
-                mc_fallback = MediacloudFeedFetcher()
+                mc_fallback = MediaCloudFeedFetcher()
                 logger.info("mediacloud fallback enabled")
             except Exception as exc:
                 logger.warning("could not init MC fallback: %s", exc)

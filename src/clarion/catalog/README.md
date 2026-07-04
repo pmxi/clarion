@@ -1,6 +1,6 @@
 # clarion.catalog
 
-Mirror of the [Mediacloud](https://search.mediacloud.org/directory) source
+Mirror of the [Media Cloud](https://search.mediacloud.org/directory) source
 catalog, stored in the clarion postgres `sources` schema. Used as the seed
 for news-sitemap discovery.
 

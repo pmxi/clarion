@@ -19,7 +19,7 @@ MAX_RETRIES = 5
 BACKOFF_BASE_SECONDS = 2.0
 
 
-class MediacloudClient:
+class MediaCloudClient:
     def __init__(self, api_key: str | None = None, page_size: int = PAGE_SIZE):
         key = api_key or os.environ.get(API_KEY_ENV)
         if not key:

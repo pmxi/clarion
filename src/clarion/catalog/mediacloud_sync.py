@@ -1,4 +1,4 @@
-"""Sync the Mediacloud source catalog into the clarion postgres `sources` schema.
+"""Sync the Media Cloud source catalog into the clarion postgres `sources` schema.
 
 Usage:
     DATABASE_URL=postgresql://... MEDIACLOUD_API_KEY=... \\
@@ -23,7 +23,7 @@ import psycopg
 from psycopg.rows import DictRow
 
 from clarion.catalog.canonicalize import canonical_domain
-from clarion.catalog.client import MediacloudClient
+from clarion.catalog.client import MediaCloudClient
 from clarion.catalog.db import open_db
 from clarion.logging import get_logger
 
@@ -141,7 +141,7 @@ def _upsert(
         return cur.rowcount
 
 
-def sync_collections(conn: psycopg.Connection[DictRow], client: MediacloudClient) -> int:
+def sync_collections(conn: psycopg.Connection[DictRow], client: MediaCloudClient) -> int:
     now = _now_iso()
     rows = [_project_collection(c, now) for c in client.iter_collections()]
     n = _upsert(conn, "collection", COLLECTION_COLUMNS, rows)
@@ -149,7 +149,7 @@ def sync_collections(conn: psycopg.Connection[DictRow], client: MediacloudClient
     return n
 
 
-def sync_sources(conn: psycopg.Connection[DictRow], client: MediacloudClient) -> int:
+def sync_sources(conn: psycopg.Connection[DictRow], client: MediaCloudClient) -> int:
     now = _now_iso()
     total = 0
     batch: list[tuple] = []
@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    client = MediacloudClient()
+    client = MediaCloudClient()
     quota = client.quota()
     logger.info("API quota: %s", quota)
 

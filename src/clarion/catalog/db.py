@@ -1,4 +1,4 @@
-"""Postgres store for the Mediacloud source catalog (schema `sources`)."""
+"""Postgres store for the Media Cloud source catalog (schema `sources`)."""
 
 from __future__ import annotations
 

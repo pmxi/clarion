@@ -1,6 +1,6 @@
 """Normalize publisher homepage URLs to a canonical domain for dedup.
 
-Mediacloud lists the same outlet under several URL variants
+Media Cloud lists the same outlet under several URL variants
 (`http://example.com`, `https://www.example.com/`, port-suffixed forms).
 Collapsing these to a single key removes ~15-20% of the catalog.
 """
