@@ -18,30 +18,17 @@ uv run clarion catalog sync
 ```
 
 Pulls every collection (~1.7k) and every source (~1M) and upserts into
-`sources.collections` and `sources.sources`. ~213 API hits at the default
+`sources.collection` and `sources.source`. ~213 API hits at the default
 page size of 5000. Takes a few minutes.
 
 Use `--collections-only` for a cheap (2-hit) smoke test.
 
-## One-shot migration from a SQLite snapshot
-
-The original tooling used a local SQLite file (`sources.db`). To load an
-existing snapshot into postgres without re-syncing from the API:
-
-```sh
-export DATABASE_URL=postgresql://clarion_user:...@host:5432/clarion
-uv run clarion catalog migrate_sqlite_to_postgres
-```
-
-Refuses to run against non-empty target tables. Streams via `COPY` — ~50s
-for 1M rows over a typical SSH tunnel.
-
 ## What's stored
 
-- `collections` — id, name, notes, source_count, public/featured/managed/monitored flags.
-- `sources` — id, homepage, computed `canonical_domain` (lowercased, www-stripped), language, country, `stories_per_week`, `last_story`, etc.
-- `source_collections` — empty in v1 (membership not synced; see below).
-- `sync_runs` — one row per run for diagnostics.
+- `collection` — id, name, notes, source_count, public/featured/managed/monitored flags.
+- `source` — id, homepage, computed `canonical_domain` (lowercased, www-stripped), language, country, `stories_per_week`, `last_story`, etc.
+- `source_collection` — empty in v1 (membership not synced; see below).
+- `sync_run` — one row per run for diagnostics.
 
 ## What's NOT stored (yet)
 
@@ -56,7 +43,7 @@ for 1M rows over a typical SSH tunnel.
 ```sql
 -- Active English-language sources, by volume.
 SELECT canonical_domain, name, primary_language, pub_country, stories_per_week
-FROM sources
+FROM sources.source
 WHERE primary_language = 'en'
   AND stories_per_week >= 50
   AND last_story >= '01/2026'
@@ -65,5 +52,5 @@ LIMIT 50;
 
 -- Dedup ratio.
 SELECT COUNT(*) AS rows, COUNT(DISTINCT canonical_domain) AS unique_domains
-FROM sources;
+FROM sources.source;
 ```
