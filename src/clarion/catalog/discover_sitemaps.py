@@ -29,6 +29,7 @@ import aiohttp
 
 from clarion.catalog.db import open_db
 from clarion.logging import get_logger
+from clarion.timeutils import parse_iso_datetime, utc_now_iso
 
 logger = get_logger(__name__)
 
@@ -45,10 +46,6 @@ INDEX_CHILD_FETCH_LIMIT = 8
 _ARCHIVE_PATH_RE = re.compile(r"(?<![0-9])(?:19|20)\d{2}(?:[-_/]\d{1,2})?(?![0-9])")
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _local_name(tag: str) -> str:
     return tag.split("}", 1)[1] if "}" in tag else tag
 
@@ -60,8 +57,9 @@ def _ns_uri(tag: str) -> str:
 
 
 def _parse_iso(value: str) -> datetime | None:
+    """Lenient wrapper: publishers ship malformed dates; skip, don't crash."""
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return parse_iso_datetime(value)
     except ValueError:
         return None
 
@@ -259,7 +257,7 @@ def _row(
     info: SitemapInfo,
     discovered_via: str,
 ) -> dict[str, Any]:
-    now = _now_iso()
+    now = utc_now_iso()
     return {
         "source_id": source_id,
         "sitemap_url": url,
@@ -340,7 +338,7 @@ async def main_async(args) -> int:
         print("no sources match the filter")
         return 1
 
-    started_at = _now_iso()
+    started_at = utc_now_iso()
     row = conn.execute(
         "INSERT INTO discovery_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
@@ -371,7 +369,7 @@ async def main_async(args) -> int:
                         "latest_pub_date": None,
                         "etag": None,
                         "last_modified": None,
-                        "last_checked_at": _now_iso(),
+                        "last_checked_at": utc_now_iso(),
                         "last_ok_at": None,
                         "error": f"crash: {exc!r}",
                     }]
@@ -399,7 +397,7 @@ async def main_async(args) -> int:
     conn.execute(
         "UPDATE discovery_run SET finished_at=%s, sources_checked=%s, "
         "news_sitemaps_found=%s WHERE id=%s",
-        (_now_iso(), len(sources), n_news_fresh, run_id),
+        (utc_now_iso(), len(sources), n_news_fresh, run_id),
     )
     conn.close()
 

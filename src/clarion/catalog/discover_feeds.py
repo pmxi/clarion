@@ -33,6 +33,7 @@ import feedparser
 
 from clarion.catalog.db import open_db
 from clarion.logging import get_logger
+from clarion.timeutils import utc_now_iso
 
 logger = get_logger(__name__)
 
@@ -49,10 +50,6 @@ FEED_TYPES = {
     "application/xml": "rss",  # ambiguous; treat as rss candidate
     "text/xml": "rss",          # same
 }
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _looks_gzipped(raw: bytes) -> bool:
@@ -320,7 +317,7 @@ ON CONFLICT(source_id, feed_url) DO UPDATE SET
 
 
 def _row(source_id: int, df: DiscoveredFeed) -> dict[str, Any]:
-    now = _now_iso()
+    now = utc_now_iso()
     return {
         "source_id": source_id,
         "feed_url": df.url,
@@ -382,7 +379,7 @@ async def main_async(args) -> int:
         print("no sources match the filter")
         return 1
 
-    started_at = _now_iso()
+    started_at = utc_now_iso()
     row = conn.execute(
         "INSERT INTO feed_discovery_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
@@ -446,7 +443,7 @@ async def main_async(args) -> int:
     conn.execute(
         "UPDATE feed_discovery_run SET finished_at=%s, sources_checked=%s, "
         "feeds_found=%s, mediacloud_fallbacks=%s WHERE id=%s",
-        (_now_iso(), len(sources), total_feeds, mc_fallback_count, run_id),
+        (utc_now_iso(), len(sources), total_feeds, mc_fallback_count, run_id),
     )
     conn.close()
 

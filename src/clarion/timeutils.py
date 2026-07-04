@@ -32,3 +32,8 @@ def parse_iso_datetime(raw: str, *, assume_local: bool = False) -> datetime:
 def format_iso_datetime(dt: datetime) -> str:
     """Serialize a datetime as an ISO 8601 UTC timestamp."""
     return ensure_utc(dt).isoformat().replace("+00:00", "Z")
+
+
+def utc_now_iso() -> str:
+    """Current time as an ISO 8601 UTC string."""
+    return format_iso_datetime(utc_now())

@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import AsyncIterator
 from xml.etree import ElementTree as ET
 
@@ -26,7 +26,7 @@ import aiohttp
 from clarion.logging import get_logger
 from clarion.ingest.sources.base import Item, Stream
 from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
-from clarion.timeutils import utc_now
+from clarion.timeutils import parse_iso_datetime, utc_now
 
 logger = get_logger(__name__)
 
@@ -209,7 +209,8 @@ def _looks_gzipped(raw: bytes) -> bool:
 
 
 def _parse_iso(value: str) -> datetime | None:
+    """Lenient wrapper: publishers ship malformed dates; skip, don't crash."""
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        return parse_iso_datetime(value)
     except ValueError:
         return None

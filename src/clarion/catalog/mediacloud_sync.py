@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
 from typing import Any, Iterable, LiteralString
 
 import psycopg
@@ -26,6 +25,7 @@ from clarion.catalog.canonicalize import canonical_domain
 from clarion.catalog.client import MediaCloudClient
 from clarion.catalog.db import open_db
 from clarion.logging import get_logger
+from clarion.timeutils import utc_now_iso
 
 logger = get_logger(__name__)
 
@@ -68,10 +68,6 @@ SOURCE_COLUMNS = (
     "alternative_domains",
     "last_refreshed_at",
 )
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _as_bool(value: Any) -> bool | None:
@@ -142,7 +138,7 @@ def _upsert(
 
 
 def sync_collections(conn: psycopg.Connection[DictRow], client: MediaCloudClient) -> int:
-    now = _now_iso()
+    now = utc_now_iso()
     rows = [_project_collection(c, now) for c in client.iter_collections()]
     n = _upsert(conn, "collection", COLLECTION_COLUMNS, rows)
     logger.info("synced %d collections", n)
@@ -150,7 +146,7 @@ def sync_collections(conn: psycopg.Connection[DictRow], client: MediaCloudClient
 
 
 def sync_sources(conn: psycopg.Connection[DictRow], client: MediaCloudClient) -> int:
-    now = _now_iso()
+    now = utc_now_iso()
     total = 0
     batch: list[tuple] = []
     BATCH_SIZE = 5000
@@ -222,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
 
     conn = open_db()
 
-    started_at = _now_iso()
+    started_at = utc_now_iso()
     row = conn.execute(
         "INSERT INTO sync_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
@@ -245,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         conn.execute(
             "UPDATE sync_run SET finished_at=%s, collections_synced=%s, "
             "sources_synced=%s, error=%s WHERE id=%s",
-            (_now_iso(), n_coll, n_src, error, run_id),
+            (utc_now_iso(), n_coll, n_src, error, run_id),
         )
 
     print_summary(conn)
