@@ -340,7 +340,7 @@ async def main_async(args) -> int:
 
     started_at = utc_now_iso()
     row = conn.execute(
-        "INSERT INTO discovery_run (started_at) VALUES (%s) RETURNING id",
+        "INSERT INTO sitemap_discovery_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
     ).fetchone()
     assert row is not None  # INSERT ... RETURNING always yields a row
@@ -395,14 +395,14 @@ async def main_async(args) -> int:
     sources_with_news = len({r["source_id"] for r in all_rows if r["kind"] == "news" and r["fresh_entries_24h"] > 0})
 
     conn.execute(
-        "UPDATE discovery_run SET finished_at=%s, sources_checked=%s, "
+        "UPDATE sitemap_discovery_run SET finished_at=%s, sources_checked=%s, "
         "news_sitemaps_found=%s WHERE id=%s",
         (utc_now_iso(), len(sources), n_news_fresh, run_id),
     )
     conn.close()
 
     print()
-    print(f"discovery_run_id:        {run_id}")
+    print(f"sitemap_discovery_run_id: {run_id}")
     print(f"Sources walked:          {len(sources):>6}")
     print(f"Sitemaps recorded:       {len(all_rows):>6}")
     print(f"  news (fresh <24h):     {n_news_fresh:>6}")
