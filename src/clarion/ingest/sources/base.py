@@ -24,12 +24,13 @@ from typing import Any, AsyncIterator, Dict
 class Item:
     """A single unit produced by a Stream.
 
-    Fields are chosen for what the classifier and notifier actually need:
+    Fields mirror the `event` table columns the writer persists; the
+    consumers are the digest builder and the web UI:
     - `title` is the first-line summary (subject, post title, headline)
-    - `body` is the full text the classifier reasons over
-    - `author` is what fronts a notification ("who/what sent this")
+    - `body` is the full text, when it adds anything beyond the title
+    - `author` is who/what published the item
     - `url` is the deep link if the source provides one
-    - `metadata` carries source-specific extras the notifier may render
+    - `metadata` carries source-specific extras consumers may render
     """
 
     id: str

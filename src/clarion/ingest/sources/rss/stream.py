@@ -75,8 +75,8 @@ class RSSStream(Stream):
                             continue
                         self._seen.add(item.id)
                         # On the very first poll after startup, prime the seen
-                        # set but don't emit — otherwise every restart would
-                        # re-flood the classifier with backlog.
+                        # set but don't emit — otherwise a newly added feed
+                        # would flood the event table with its whole backlog.
                         if self._first_poll:
                             continue
                         yield item

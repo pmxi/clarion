@@ -1,8 +1,8 @@
 """Stream-type registry.
 
-Maps the `stream_type` string stored in the `streams` table to the
+Maps the `stream_type` string stored in the `stream` table to the
 (Stream class, config class) pair that knows how to build and validate
-accounts of that type. New stream types register themselves here.
+streams of that type. New stream types register themselves here.
 """
 
 from __future__ import annotations
