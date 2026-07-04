@@ -31,8 +31,6 @@ import numpy as np
 class ClusterResult:
     # Cluster id for each input row, dense in [0, n_clusters).
     assignment: np.ndarray
-    # Exact final centroids (mean of members, renormalized), (n_clusters, dim).
-    centroids: np.ndarray
     # Cosine similarity of each row to its own final centroid.
     similarity: np.ndarray
 
@@ -53,8 +51,8 @@ def cluster_greedy(
     if merge_at < 1.0:
         centroids, _ = _finalize(emb, assignment)
         assignment = _merge_fragments(assignment, centroids, merge_at)
-    centroids, similarity = _finalize(emb, assignment)
-    return ClusterResult(assignment=assignment, centroids=centroids, similarity=similarity)
+    _, similarity = _finalize(emb, assignment)
+    return ClusterResult(assignment=assignment, similarity=similarity)
 
 
 def _assign_greedy(emb: np.ndarray, threshold: float, batch_size: int) -> np.ndarray:
