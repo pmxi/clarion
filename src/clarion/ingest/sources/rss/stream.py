@@ -2,7 +2,8 @@
 
 Polls the configured feed URL, maps each new entry to an Item, and yields.
 Dedup is belt-and-suspenders: an in-memory `_seen` set for this process's
-run, plus the shared processed_items ledger for across-restart persistence.
+run, plus the `event` table's UNIQUE (source_type, item_id) constraint
+for across-restart persistence.
 """
 
 from __future__ import annotations

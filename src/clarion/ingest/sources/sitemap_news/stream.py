@@ -2,7 +2,8 @@
 
 Polls a publisher's `<news:news>` sitemap and yields one Item per fresh
 article URL. Belt-and-suspenders dedup: an in-memory `_seen` set for the
-process lifetime plus the runtime's processed_items ledger across restarts.
+process lifetime plus the `event` table's UNIQUE (source_type, item_id)
+constraint across restarts.
 First poll primes the seen set without emitting (otherwise every restart
 would re-flood the dashboard with the last 48h backlog).
 
