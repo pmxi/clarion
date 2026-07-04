@@ -21,10 +21,6 @@ load_dotenv()
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-    LOG_LEVEL: str = "INFO"
-    LOG_DIR: str = "logs"
-    DISABLE_FILE_LOGGING: bool = False
-
     SESSION_SECRET: Optional[str] = None
 
     @classmethod
