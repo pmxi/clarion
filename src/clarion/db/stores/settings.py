@@ -25,7 +25,3 @@ def set(conn: psycopg.Connection[DictRow], key: str, value: str) -> None:
 def all(conn: psycopg.Connection[DictRow]) -> Dict[str, str]:
     rows = conn.execute("SELECT key, value FROM app_setting").fetchall()
     return {r["key"]: r["value"] for r in rows}
-
-
-def delete(conn: psycopg.Connection[DictRow], key: str) -> None:
-    conn.execute("DELETE FROM app_setting WHERE key=%s", (key,))
