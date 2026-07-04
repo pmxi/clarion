@@ -40,9 +40,6 @@
   so aggregator apps stop depending on direct Postgres access. Today
   `clarion_web` reads Postgres directly — the deliberate "shared Postgres now,
   API later" call.
-- Migrate the live `oracle` deployment off the legacy Sentinel names: checkout
-  path, the now-two systemd units (`clarion` + `clarion-web`), environment
-  path, Postgres database, and Postgres role.
 - The v5 vocabulary renames (`stream.stream_type`→`source_type`,
   `story.article_count`→`event_count`, `story_article`→`story_event`,
   `sources.discovery_run`→`sitemap_discovery_run`) and the `event.score`
