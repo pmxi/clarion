@@ -37,7 +37,7 @@ def create_app(database_url: Optional[str] = None, debug: bool = False) -> Flask
     return app
 
 
-def run(host: str = "127.0.0.1", port: int = 8765, debug: bool = False) -> None:
+def run(host: str = "127.0.0.1", port: int = 8766, debug: bool = False) -> None:
     app = create_app(debug=debug)
     app.run(host=host, port=port, debug=debug, threaded=True)
 
@@ -46,7 +46,7 @@ def main() -> None:
     import os
 
     host = os.getenv("CLARION_WEB_HOST", "127.0.0.1")
-    port = int(os.getenv("CLARION_WEB_PORT", "8765"))
+    port = int(os.getenv("CLARION_WEB_PORT", "8766"))
     run(host=host, port=port)
 
 

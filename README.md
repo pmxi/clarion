@@ -90,7 +90,7 @@ uv run clarion-web
 
 The web UI is a separate process that reads the same Postgres database and
 manages stream config. It does **not** collect anything itself — run
-`clarion run` for that. Open `http://127.0.0.1:8765`. No login required.
+`clarion run` for that. Open `http://127.0.0.1:8766`. No login required.
 From there you can:
 - Read the daily digest: each day's stories ranked by breadth of coverage
 - Watch the live feed as items arrive in real time
