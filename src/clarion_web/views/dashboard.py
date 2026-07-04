@@ -26,12 +26,12 @@ def index():
             "monitoring_start": state_store.get_monitoring_start_time(conn),
             "recent": events_store.recent(conn, limit=25),
             "streams_count": len(streams_store.list_all(conn)),
-            "health": _daemon_health(last_check),
+            "health": _collector_health(last_check),
         }
     return render_template("dashboard.html", **snapshot)
 
 
-def _daemon_health(last_check: Optional[datetime]) -> Dict[str, Any]:
+def _collector_health(last_check: Optional[datetime]) -> Dict[str, Any]:
     if last_check is None:
         return {"status": "never run", "ok": False}
     age_s = (utc_now() - last_check).total_seconds()
