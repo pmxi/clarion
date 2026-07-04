@@ -159,8 +159,8 @@ details summary {
 }
 details[open] summary { margin-bottom: 0.5rem; }
 
-.new-account { max-width: 36rem; }
-.new-account form p .hint { display: block; margin-top: 0.25rem; }
+.new-stream { max-width: 36rem; }
+.new-stream form p .hint { display: block; margin-top: 0.25rem; }
 .errors {
   background: #fdebea;
   border: 1px solid #f5b7b1;
