@@ -6,12 +6,12 @@
 
   <p style="margin: 0 0 1em 0;">
     <strong>{{ distinct_streams }}</strong> streams emitted ·
-    <strong>{{ total }}</strong> items in the last {{ window }} live_events ·
-    <strong>{{ "%.1f"|format(total_rate_per_sec) }}</strong> items/s overall
+    <strong>{{ total }}</strong> events in the last {{ window }} rows ·
+    <strong>{{ "%.1f"|format(total_rate_per_sec) }}</strong> events/s overall
   </p>
 
   <form method="get" action="{{ url_for('streams.activity') }}" style="margin-bottom: 1em;">
-    <label>Window (live_events to scan):
+    <label>Window (event rows to scan):
       <select name="window">
         <option value="5000"   {% if window == 5000 %}selected{% endif %}>5k</option>
         <option value="20000"  {% if window == 20000 %}selected{% endif %}>20k (default)</option>
@@ -26,7 +26,7 @@
 
   {% if activity %}
     <table>
-      <thead><tr><th>Stream</th><th>Type</th><th>Items in window</th><th>Items/min</th><th>Last seen</th></tr></thead>
+      <thead><tr><th>Stream</th><th>Type</th><th>Events in window</th><th>Events/min</th><th>Last seen</th></tr></thead>
       <tbody>
       {% for a in activity %}
         <tr>
@@ -50,7 +50,7 @@
       </tbody>
     </table>
   {% else %}
-    <p>No item_received events in the last {{ window }} live_events.</p>
+    <p>No events in the last {{ window }} rows.</p>
   {% endif %}
 </section>
 {% endblock %}

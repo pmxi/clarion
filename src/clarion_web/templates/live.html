@@ -42,8 +42,8 @@
   </h2>
 
   <div class="live-stats">
-    <div class="stat"><span class="stat-val" id="rate-1s">0</span><span class="stat-lbl">items / sec (5s avg)</span></div>
-    <div class="stat"><span class="stat-val" id="rate-60s">0</span><span class="stat-lbl">items / min</span></div>
+    <div class="stat"><span class="stat-val" id="rate-1s">0</span><span class="stat-lbl">events / sec (5s avg)</span></div>
+    <div class="stat"><span class="stat-val" id="rate-60s">0</span><span class="stat-lbl">events / min</span></div>
     <div class="stat"><span class="stat-val" id="total-seen">0</span><span class="stat-lbl">total seen (session)</span></div>
   </div>
 
@@ -142,7 +142,7 @@
     needsRender = false;
     const shown = events.filter(passesFilter).slice(0, MAX_FEED_ITEMS);
     if (shown.length === 0) {
-      feedEl.innerHTML = '<div style="padding: 1em; opacity: 0.5; text-align: center;">No matching items yet.</div>';
+      feedEl.innerHTML = '<div style="padding: 1em; opacity: 0.5; text-align: center;">No matching events yet.</div>';
       filterSummaryEl.textContent = "";
       return;
     }
@@ -267,7 +267,7 @@
   es.addEventListener("error", () => {
     connPulse.className = "pulse err"; connText.textContent = "reconnecting…";
   });
-  es.addEventListener("item_received", (ev) => {
+  es.addEventListener("event_received", (ev) => {
     if (paused) return;
     try { handleItemReceived(JSON.parse(ev.data)); } catch (e) { console.error(e); }
   });

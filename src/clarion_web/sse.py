@@ -24,7 +24,7 @@ def row_to_payload(row: Dict[str, Any]) -> tuple[str, str]:
         "author": row.get("author"),
         "received_at": received_at.isoformat() if received_at else None,
     }
-    return "item_received", json.dumps(payload, default=str)
+    return "event_received", json.dumps(payload, default=str)
 
 
 def frame(event_id: int, event_type: str, payload_json: str) -> str:
