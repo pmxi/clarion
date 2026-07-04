@@ -21,7 +21,7 @@ def index():
     with db_pool.connection() as conn:
         last_check = state_store.get_last_check_time(conn)
         snapshot = {
-            "processed_count": events_store.count(conn),
+            "event_count": events_store.count(conn),
             "last_check": last_check,
             "monitoring_start": state_store.get_monitoring_start_time(conn),
             "recent": events_store.recent(conn, limit=25),

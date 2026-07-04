@@ -10,8 +10,8 @@
     <dd>{{ monitoring_start or '—' }}</dd>
     <dt>Last check</dt>
     <dd>{{ last_check or '—' }}</dd>
-    <dt>Items processed</dt>
-    <dd>{{ processed_count }}</dd>
+    <dt>Events collected</dt>
+    <dd>{{ event_count }}</dd>
     <dt>Streams configured</dt>
     <dd>{{ streams_count }}</dd>
   </dl>
@@ -33,7 +33,7 @@
 </section>
 
 <section>
-  <h2>Recent processed items</h2>
+  <h2>Recently collected</h2>
   {% if recent %}
     <table>
       <thead>
@@ -52,7 +52,7 @@
       </tbody>
     </table>
   {% else %}
-    <p>No items processed yet.</p>
+    <p>Nothing collected yet.</p>
   {% endif %}
 </section>
 
