@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import sys
 from datetime import datetime, timezone
 from typing import Any, Iterable, LiteralString
@@ -26,8 +25,9 @@ from psycopg.rows import DictRow
 from clarion.catalog.canonicalize import canonical_domain
 from clarion.catalog.client import MediacloudClient
 from clarion.catalog.db import open_db
+from clarion.logging import get_logger
 
-logger = logging.getLogger("mediacloud_sync")
+logger = get_logger(__name__)
 
 PROGRESS_INTERVAL = 25000
 
@@ -215,11 +215,6 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the (large) source pull, sync collections only",
     )
     args = parser.parse_args(argv)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
 
     client = MediacloudClient()
     quota = client.quota()

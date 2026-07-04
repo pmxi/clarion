@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import time
 from typing import Any, Iterator
@@ -10,7 +9,9 @@ from typing import Any, Iterator
 import mediacloud.api as mca
 import requests
 
-logger = logging.getLogger(__name__)
+from clarion.logging import get_logger
+
+logger = get_logger(__name__)
 
 API_KEY_ENV = "MEDIACLOUD_API_KEY"
 PAGE_SIZE = 5000

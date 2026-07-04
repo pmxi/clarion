@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import gzip
-import logging
 import re
 import sys
 from dataclasses import dataclass, field
@@ -29,8 +28,9 @@ from xml.etree import ElementTree as ET
 import aiohttp
 
 from clarion.catalog.db import open_db
+from clarion.logging import get_logger
 
-logger = logging.getLogger("discover_sitemaps")
+logger = get_logger(__name__)
 
 NEWS_NS = "http://www.google.com/schemas/sitemap-news/0.9"
 USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; news-sitemap-finder)"
@@ -430,7 +430,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     return asyncio.run(main_async(args))
 
 

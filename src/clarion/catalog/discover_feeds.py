@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import gzip
-import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -33,8 +32,9 @@ import aiohttp
 import feedparser
 
 from clarion.catalog.db import open_db
+from clarion.logging import get_logger
 
-logger = logging.getLogger("discover_feeds")
+logger = get_logger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; rss-feed-finder)"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20)
@@ -484,7 +484,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
     return asyncio.run(main_async(args))
 
 
