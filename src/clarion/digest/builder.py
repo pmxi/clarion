@@ -244,7 +244,7 @@ def _aggregate(
         if len(idxs) < config.min_articles:
             continue
         domains = Counter(source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
-        langs = Counter(l for k in idxs if (l := normalize_lang(rows[k]["lang"])))
+        langs = Counter(lang for k in idxs if (lang := normalize_lang(rows[k]["lang"])))
         medoid = max(idxs, key=lambda k: similarity[k])
         stories.append(_Story(
             title=normalize_title(rows[medoid]["title"]),

@@ -23,7 +23,7 @@ import gzip
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any
@@ -410,7 +410,6 @@ async def main_async(args) -> int:
 
     pairs: list[tuple[int, list[DiscoveredFeed]]] = []
     mc_fallback_count = 0
-    error_count = 0
 
     async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
         async def bounded(source_id: int, homepage: str) -> tuple[int, list[DiscoveredFeed]]:
@@ -418,7 +417,7 @@ async def main_async(args) -> int:
                 try:
                     feeds = await discover_for_source(session, source_id, homepage, mc_fallback)
                     return source_id, feeds
-                except Exception as exc:
+                except Exception:
                     logger.exception("discover crashed for source %d (%s)", source_id, homepage)
                     return source_id, []
 

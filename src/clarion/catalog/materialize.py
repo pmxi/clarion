@@ -19,9 +19,8 @@ total poll load reasonable when materializing thousands of streams.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import psycopg
 from psycopg.rows import dict_row
