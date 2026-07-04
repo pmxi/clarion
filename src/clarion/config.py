@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 if TYPE_CHECKING:
     import psycopg
+    from psycopg.rows import DictRow
 
 load_dotenv()
 
@@ -35,7 +36,7 @@ class Settings:
         return cls.DATABASE_URL
 
     @classmethod
-    def load(cls, conn: "psycopg.Connection") -> None:
+    def load(cls, conn: "psycopg.Connection[DictRow]") -> None:
         from clarion.db.stores import settings as settings_store
 
         for key, raw in settings_store.all(conn).items():

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from psycopg_pool import ConnectionPool
-
 from clarion.config import settings
 from clarion.db import pool as db_pool
+from clarion.db.pool import DictConnectionPool
 
 
-def open_pool() -> ConnectionPool:
+def open_pool() -> DictConnectionPool:
     return db_pool.open_pool(settings.require_database_url())
 
 

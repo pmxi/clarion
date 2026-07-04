@@ -12,8 +12,7 @@ import signal
 import time
 from typing import Any, Dict, Optional
 
-from psycopg_pool import ConnectionPool
-
+from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import state as state_store
 from clarion.db.stores import streams as streams_store
 from clarion.ingest.sources import Item, Stream, all_specs, build_stream, ensure_loaded
@@ -34,7 +33,7 @@ _STREAM_REFRESH_SECONDS = 30
 
 
 class Supervisor:
-    def __init__(self, pool: ConnectionPool):
+    def __init__(self, pool: DictConnectionPool):
         ensure_loaded()
         self.pool = pool
         self._shutdown = asyncio.Event()

@@ -15,8 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from psycopg_pool import ConnectionPool
-
+from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import events as events_store
 from clarion.ingest.sources import Item
 from clarion.logging import get_logger
@@ -31,7 +30,7 @@ class EventWriter:
     BATCH_INTERVAL_S = 0.25
     QUEUE_MAX = 50_000
 
-    def __init__(self, pool: ConnectionPool):
+    def __init__(self, pool: DictConnectionPool):
         self.pool = pool
         self._queue: "asyncio.Queue[Item]" = asyncio.Queue(maxsize=self.QUEUE_MAX)
         self._task: Optional[asyncio.Task] = None

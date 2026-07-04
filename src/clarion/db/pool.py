@@ -18,24 +18,28 @@ from contextlib import contextmanager
 from typing import Iterator, Optional
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
-_pool: Optional[ConnectionPool] = None
+# Every clarion connection uses dict rows; annotations share these aliases.
+DictConnection = psycopg.Connection[DictRow]
+DictConnectionPool = ConnectionPool[DictConnection]
+
+_pool: Optional[DictConnectionPool] = None
 _lock = threading.Lock()
 
 
-def open_pool(database_url: str, *, min_size: int = 1, max_size: int = 8) -> ConnectionPool:
+def open_pool(database_url: str, *, min_size: int = 1, max_size: int = 8) -> DictConnectionPool:
     """Open (or return) the process-wide pool. Idempotent."""
     global _pool
     with _lock:
         if _pool is None:
-            _pool = ConnectionPool(
+            _pool = DictConnectionPool(
                 database_url,
                 min_size=min_size,
                 max_size=max_size,
                 kwargs={"row_factory": dict_row, "autocommit": True},
-                check=ConnectionPool.check_connection,
+                check=DictConnectionPool.check_connection,
                 name="clarion",
                 open=True,
             )
@@ -45,14 +49,15 @@ def open_pool(database_url: str, *, min_size: int = 1, max_size: int = 8) -> Con
     return _pool
 
 
-def get_pool() -> ConnectionPool:
-    if _pool is None:
+def get_pool() -> DictConnectionPool:
+    pool = _pool
+    if pool is None:
         raise RuntimeError("connection pool not opened; call db.pool.open_pool() at startup")
-    return _pool
+    return pool
 
 
 @contextmanager
-def connection() -> Iterator[psycopg.Connection]:
+def connection() -> Iterator[DictConnection]:
     with get_pool().connection() as conn:
         yield conn
 
@@ -65,8 +70,8 @@ def close_pool() -> None:
             _pool = None
 
 
-def raw_connection(database_url: str) -> psycopg.Connection:
+def raw_connection(database_url: str) -> DictConnection:
     """A dedicated autocommit connection outside the pool."""
-    conn = psycopg.connect(database_url, row_factory=dict_row)
+    conn = psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row)
     conn.autocommit = True
     return conn

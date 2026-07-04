@@ -13,6 +13,7 @@ from clarion.db.stores import events as events_store
 def row_to_payload(row: Dict[str, Any]) -> tuple[str, str]:
     """Render an event row into the (event_type, payload_json) pair the
     SSE client expects."""
+    received_at = row.get("received_at")
     payload: Dict[str, Any] = {
         "source_type": row.get("source_type"),
         "item_id": row.get("item_id"),
@@ -21,7 +22,7 @@ def row_to_payload(row: Dict[str, Any]) -> tuple[str, str]:
         "body": row.get("body"),
         "url": row.get("url"),
         "author": row.get("author"),
-        "received_at": row.get("received_at").isoformat() if row.get("received_at") else None,
+        "received_at": received_at.isoformat() if received_at else None,
     }
     return "item_received", json.dumps(payload, default=str)
 

@@ -10,6 +10,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg
+from psycopg.rows import DictRow
 
 _STORY_CHUNK = 500
 
@@ -17,7 +18,7 @@ _STORY_CHUNK = 500
 # ----- write ---------------------------------------------------------------
 
 
-def replace_day(conn: psycopg.Connection, day: date, stories: List[Dict[str, Any]]) -> None:
+def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict[str, Any]]) -> None:
     """Replace one day's stories. Each story dict carries title,
     rep_event_id, article_count, source_count, lang, and members —
     a list of (event_id, similarity) pairs."""
@@ -57,12 +58,12 @@ def replace_day(conn: psycopg.Connection, day: date, stories: List[Dict[str, Any
 # ----- read ----------------------------------------------------------------
 
 
-def available_days(conn: psycopg.Connection) -> List[date]:
+def available_days(conn: psycopg.Connection[DictRow]) -> List[date]:
     rows = conn.execute("SELECT DISTINCT day FROM story ORDER BY day DESC").fetchall()
     return [r["day"] for r in rows]
 
 
-def day_stats(conn: psycopg.Connection, day: date) -> Dict[str, Any]:
+def day_stats(conn: psycopg.Connection[DictRow], day: date) -> Dict[str, Any]:
     row = conn.execute(
         """
         SELECT COUNT(*) AS stories,
@@ -72,10 +73,10 @@ def day_stats(conn: psycopg.Connection, day: date) -> Dict[str, Any]:
         """,
         (day,),
     ).fetchone()
-    return dict(row)
+    return dict(row) if row else {}
 
 
-def lang_counts(conn: psycopg.Connection, day: date, top: int = 8) -> List[Tuple[str, int]]:
+def lang_counts(conn: psycopg.Connection[DictRow], day: date, top: int = 8) -> List[Tuple[str, int]]:
     rows = conn.execute(
         """
         SELECT lang, COUNT(*) AS n FROM story
@@ -88,7 +89,7 @@ def lang_counts(conn: psycopg.Connection, day: date, top: int = 8) -> List[Tuple
 
 
 def top_stories(
-    conn: psycopg.Connection,
+    conn: psycopg.Connection[DictRow],
     day: date,
     lang: Optional[str] = None,
     limit: int = 50,
@@ -111,17 +112,18 @@ def top_stories(
     return [dict(r) for r in rows]
 
 
-def story_count(conn: psycopg.Connection, day: date, lang: Optional[str] = None) -> int:
+def story_count(conn: psycopg.Connection[DictRow], day: date, lang: Optional[str] = None) -> int:
     sql = "SELECT COUNT(*) AS n FROM story WHERE day = %s"
     params: List[Any] = [day]
     if lang:
         sql += " AND lang = %s"
         params.append(lang)
-    return int(conn.execute(sql, params).fetchone()["n"])
+    row = conn.execute(sql, params).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def members_for(
-    conn: psycopg.Connection, story_ids: List[int], per_story: int = 12
+    conn: psycopg.Connection[DictRow], story_ids: List[int], per_story: int = 12
 ) -> Dict[int, List[Dict[str, Any]]]:
     """Top member articles (by similarity to the story centroid) for each
     listed story."""

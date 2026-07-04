@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from psycopg_pool import ConnectionPool
 
+from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import stories as stories_store
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
@@ -66,7 +66,7 @@ class _Story:
 
 
 def build_digest(
-    pool: ConnectionPool, day: date, config: DigestConfig, dry_run: bool = False
+    pool: DictConnectionPool, day: date, config: DigestConfig, dry_run: bool = False
 ) -> DigestStats:
     """Build (or rebuild) the story digest for one UTC day.
 
@@ -188,7 +188,7 @@ def _embed_with_cache(
     id_to_row = {int(i): k for k, i in enumerate(cached_ids)}
     missing = [k for k, i in enumerate(ids) if int(i) not in id_to_row]
 
-    dim = cached_emb.shape[1] if cached_emb is not None else None
+    dim = cached_emb.shape[1] if cached_emb is not None else 0
     if missing:
         embedder = TitleEmbedder(
             model_name=config.model_name,
@@ -207,6 +207,7 @@ def _embed_with_cache(
         emb[k] = new_emb[pos]
     hit = [k for k in range(len(ids)) if int(ids[k]) in id_to_row]
     if hit:
+        assert cached_emb is not None  # a cache hit implies the cache loaded
         hit_emb = cached_emb[[id_to_row[int(ids[k])] for k in hit]].astype(np.float32)
         # float16 storage denormalizes slightly; restore unit length.
         norms = np.linalg.norm(hit_emb, axis=1, keepdims=True)

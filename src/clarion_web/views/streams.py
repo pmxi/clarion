@@ -96,7 +96,7 @@ def activity():
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(id) FROM event")
             row = cur.fetchone()
-            max_id = (row["max"] if isinstance(row, dict) else row[0]) or 0
+            max_id = (row["max"] if row else 0) or 0
             low_id = max(0, max_id - window)
             cur.execute(
                 """
@@ -118,7 +118,7 @@ def activity():
                 "SELECT COUNT(*) AS c FROM event WHERE id > %s", (low_id,),
             )
             total_row = cur.fetchone()
-            total = (total_row["c"] if isinstance(total_row, dict) else total_row[0]) or 0
+            total = (total_row["c"] if total_row else 0) or 0
 
     # Compute rate per stream in items/min
     now = utc_now()

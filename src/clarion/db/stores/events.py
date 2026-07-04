@@ -11,10 +11,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import psycopg
+from psycopg.rows import DictRow
 
 
 def insert(
-    conn: psycopg.Connection,
+    conn: psycopg.Connection[DictRow],
     *,
     source_type: str,
     item_id: str,
@@ -41,7 +42,7 @@ def insert(
     return int(row["id"]) if row else None
 
 
-def insert_bulk(conn: psycopg.Connection, rows: List[Dict[str, Any]]) -> List[int]:
+def insert_bulk(conn: psycopg.Connection[DictRow], rows: List[Dict[str, Any]]) -> List[int]:
     """Bulk-insert events; dict keys match insert()'s kwargs. Returns ids
     of rows actually inserted (dedup hits are omitted)."""
     if not rows:
@@ -70,7 +71,7 @@ def insert_bulk(conn: psycopg.Connection, rows: List[Dict[str, Any]]) -> List[in
     return [int(r["id"]) for r in inserted]
 
 
-def recent(conn: psycopg.Connection, limit: int = 25) -> List[Dict[str, Any]]:
+def recent(conn: psycopg.Connection[DictRow], limit: int = 25) -> List[Dict[str, Any]]:
     rows = conn.execute(
         "SELECT id, source_type, item_id, stream_name, title, url, author, "
         "received_at, observed_at "
@@ -80,16 +81,18 @@ def recent(conn: psycopg.Connection, limit: int = 25) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def count(conn: psycopg.Connection) -> int:
-    return int(conn.execute("SELECT COUNT(*) AS c FROM event").fetchone()["c"])
+def count(conn: psycopg.Connection[DictRow]) -> int:
+    row = conn.execute("SELECT COUNT(*) AS c FROM event").fetchone()
+    return int(row["c"]) if row else 0
 
 
-def latest_id(conn: psycopg.Connection) -> int:
-    return int(conn.execute("SELECT COALESCE(MAX(id), 0) AS mx FROM event").fetchone()["mx"])
+def latest_id(conn: psycopg.Connection[DictRow]) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(id), 0) AS mx FROM event").fetchone()
+    return int(row["mx"]) if row else 0
 
 
 def fetch_since(
-    conn: psycopg.Connection, after_id: int, limit: int = 200
+    conn: psycopg.Connection[DictRow], after_id: int, limit: int = 200
 ) -> List[Dict[str, Any]]:
     """Used by the SSE poll loop."""
     rows = conn.execute(

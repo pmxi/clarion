@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator
 
 import aiohttp
-import feedparser  # type: ignore
+import feedparser
 
 from clarion.logging import get_logger
 from clarion.ingest.sources.base import Item, Stream

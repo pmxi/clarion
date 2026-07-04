@@ -346,6 +346,7 @@ async def main_async(args) -> int:
         "INSERT INTO discovery_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
     ).fetchone()
+    assert row is not None  # INSERT ... RETURNING always yields a row
     run_id = row["id"]
 
     logger.info("walking %d sources (concurrency=%d)", len(sources), args.concurrency)

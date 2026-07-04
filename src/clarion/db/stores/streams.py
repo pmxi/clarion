@@ -6,9 +6,10 @@ import json
 from typing import Any, Dict, List, Optional
 
 import psycopg
+from psycopg.rows import DictRow
 
 
-def upsert(conn: psycopg.Connection, name: str, stream_type: str, config_json: str) -> None:
+def upsert(conn: psycopg.Connection[DictRow], name: str, stream_type: str, config_json: str) -> None:
     conn.execute(
         "INSERT INTO stream (name, stream_type, config_json, updated_at) "
         "VALUES (%s, %s, %s::jsonb, NOW()) "
@@ -20,13 +21,13 @@ def upsert(conn: psycopg.Connection, name: str, stream_type: str, config_json: s
     )
 
 
-def add(conn: psycopg.Connection, name: str, stream_type: str, config_json: str) -> None:
+def add(conn: psycopg.Connection[DictRow], name: str, stream_type: str, config_json: str) -> None:
     if get(conn, name):
         raise ValueError(f"Stream {name!r} already exists.")
     upsert(conn, name, stream_type, config_json)
 
 
-def get(conn: psycopg.Connection, name: str) -> Optional[Dict[str, Any]]:
+def get(conn: psycopg.Connection[DictRow], name: str) -> Optional[Dict[str, Any]]:
     row = conn.execute(
         "SELECT name, stream_type, config_json::text AS config_json "
         "FROM stream WHERE name=%s",
@@ -35,7 +36,7 @@ def get(conn: psycopg.Connection, name: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
-def list_all(conn: psycopg.Connection) -> List[Dict[str, Any]]:
+def list_all(conn: psycopg.Connection[DictRow]) -> List[Dict[str, Any]]:
     rows = conn.execute(
         "SELECT name, stream_type, config_json::text AS config_json "
         "FROM stream ORDER BY name"
@@ -43,13 +44,13 @@ def list_all(conn: psycopg.Connection) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def delete(conn: psycopg.Connection, name: str) -> None:
+def delete(conn: psycopg.Connection[DictRow], name: str) -> None:
     if not get(conn, name):
         raise ValueError(f"No stream named {name!r}")
     conn.execute("DELETE FROM stream WHERE name=%s", (name,))
 
 
-def toggle(conn: psycopg.Connection, name: str) -> None:
+def toggle(conn: psycopg.Connection[DictRow], name: str) -> None:
     row = get(conn, name)
     if not row:
         raise ValueError(f"No stream named {name!r}")

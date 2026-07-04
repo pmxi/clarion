@@ -25,6 +25,7 @@ from typing import Any, Iterable, Optional
 
 import psycopg
 from psycopg.rows import dict_row
+from pydantic import HttpUrl
 
 from clarion.ingest.sources.rss.config import RSSStreamConfig
 from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
@@ -91,7 +92,7 @@ class MaterializeResult:
     to_prune: list[str]
 
 
-def _select_sitemap_candidates(conn: psycopg.Connection, flt: MaterializeFilter) -> list[Candidate]:
+def _select_sitemap_candidates(conn: psycopg.Connection[Any], flt: MaterializeFilter) -> list[Candidate]:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -139,7 +140,7 @@ def _select_sitemap_candidates(conn: psycopg.Connection, flt: MaterializeFilter)
     ]
 
 
-def _select_feed_candidates(conn: psycopg.Connection, flt: MaterializeFilter) -> list[Candidate]:
+def _select_feed_candidates(conn: psycopg.Connection[Any], flt: MaterializeFilter) -> list[Candidate]:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -206,13 +207,13 @@ def _config_payload(c: Candidate) -> str:
         )
     else:
         cfg = RSSStreamConfig(
-            feed_url=c.target_url,
+            feed_url=HttpUrl(c.target_url),
             poll_seconds=poll,
         )
     return cfg.model_dump_json()
 
 
-def _existing_managed(conn: psycopg.Connection, prefixes: tuple[str, ...]) -> dict[str, dict[str, str]]:
+def _existing_managed(conn: psycopg.Connection[Any], prefixes: tuple[str, ...]) -> dict[str, dict[str, str]]:
     with conn.cursor(row_factory=dict_row) as cur:
         sql = " UNION ALL ".join(
             "SELECT name, stream_type, config_json::text AS config_json FROM stream WHERE name LIKE %s"
@@ -223,7 +224,7 @@ def _existing_managed(conn: psycopg.Connection, prefixes: tuple[str, ...]) -> di
 
 
 def plan(
-    conn: psycopg.Connection,
+    conn: psycopg.Connection[Any],
     flt: MaterializeFilter,
     include_sitemaps: bool,
     include_feeds: bool,
@@ -271,7 +272,7 @@ def plan(
     )
 
 
-def apply(conn: psycopg.Connection, result: MaterializeResult) -> None:
+def apply(conn: psycopg.Connection[Any], result: MaterializeResult) -> None:
     names_to_cand = {assign_names(result.candidates)[c]: c for c in result.candidates}
     upsert_params = [
         (name, names_to_cand[name].stream_type, _config_payload(names_to_cand[name]))

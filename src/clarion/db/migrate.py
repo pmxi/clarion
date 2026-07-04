@@ -10,13 +10,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import psycopg
+from psycopg.rows import DictRow
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 SCHEMA_VERSION = 4
 
 
-def ensure_schema(conn: psycopg.Connection) -> None:
-    conn.execute(SCHEMA_PATH.read_text())
+def ensure_schema(conn: psycopg.Connection[DictRow]) -> None:
+    conn.execute(SCHEMA_PATH.read_bytes())
     conn.execute(
         "INSERT INTO schema_meta (key, value) VALUES ('schema_version', %s) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

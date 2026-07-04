@@ -5,14 +5,15 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 import psycopg
+from psycopg.rows import DictRow
 
 
-def get(conn: psycopg.Connection, key: str) -> Optional[str]:
+def get(conn: psycopg.Connection[DictRow], key: str) -> Optional[str]:
     row = conn.execute("SELECT value FROM app_setting WHERE key=%s", (key,)).fetchone()
     return row["value"] if row else None
 
 
-def set(conn: psycopg.Connection, key: str, value: str) -> None:
+def set(conn: psycopg.Connection[DictRow], key: str, value: str) -> None:
     conn.execute(
         "INSERT INTO app_setting (key, value, updated_at) "
         "VALUES (%s, %s, NOW()) "
@@ -21,10 +22,10 @@ def set(conn: psycopg.Connection, key: str, value: str) -> None:
     )
 
 
-def all(conn: psycopg.Connection) -> Dict[str, str]:
+def all(conn: psycopg.Connection[DictRow]) -> Dict[str, str]:
     rows = conn.execute("SELECT key, value FROM app_setting").fetchall()
     return {r["key"]: r["value"] for r in rows}
 
 
-def delete(conn: psycopg.Connection, key: str) -> None:
+def delete(conn: psycopg.Connection[DictRow], key: str) -> None:
     conn.execute("DELETE FROM app_setting WHERE key=%s", (key,))

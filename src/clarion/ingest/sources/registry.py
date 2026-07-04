@@ -21,10 +21,13 @@ class StreamSpec:
 
     stream_type: str
     config_cls: Type[BaseModel]
-    stream_cls: Type[Stream]
+    # The Stream subclass; typed as a callable because each subclass takes
+    # its own config class in __init__.
+    stream_cls: Callable[..., Stream]
     # One-line human description of a config (the polled URL, typically).
     # Lets consumers render stream lists without importing config classes.
-    describe: Callable[[BaseModel], str] = field(default=lambda cfg: "")
+    # Takes the spec's own config instance, so per-type attributes are fine.
+    describe: Callable[[Any], str] = field(default=lambda cfg: "")
 
 
 _REGISTRY: Dict[str, StreamSpec] = {}

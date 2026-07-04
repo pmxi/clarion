@@ -39,4 +39,6 @@ packages = [
 dev = [
     "mediacloud>=5.0.0",
     "pytest>=8.0",
+    "ruff>=0.15.20",
+    "ty>=0.0.56",
 ]

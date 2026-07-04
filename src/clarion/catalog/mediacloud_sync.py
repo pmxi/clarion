@@ -18,9 +18,10 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, LiteralString
 
 import psycopg
+from psycopg.rows import DictRow
 
 from clarion.catalog.canonicalize import canonical_domain
 from clarion.catalog.client import MediacloudClient
@@ -122,7 +123,12 @@ def _project_source(s: dict[str, Any], now: str) -> tuple:
     )
 
 
-def _upsert(conn: psycopg.Connection, table: str, columns: tuple[str, ...], rows: Iterable[tuple]) -> int:
+def _upsert(
+    conn: psycopg.Connection[DictRow],
+    table: LiteralString,
+    columns: tuple[LiteralString, ...],
+    rows: Iterable[tuple],
+) -> int:
     placeholders = ",".join(["%s"] * len(columns))
     column_list = ",".join(columns)
     update_clause = ",".join(f"{c}=excluded.{c}" for c in columns if c != "id")
@@ -135,7 +141,7 @@ def _upsert(conn: psycopg.Connection, table: str, columns: tuple[str, ...], rows
         return cur.rowcount
 
 
-def sync_collections(conn: psycopg.Connection, client: MediacloudClient) -> int:
+def sync_collections(conn: psycopg.Connection[DictRow], client: MediacloudClient) -> int:
     now = _now_iso()
     rows = [_project_collection(c, now) for c in client.iter_collections()]
     n = _upsert(conn, "collection", COLLECTION_COLUMNS, rows)
@@ -143,7 +149,7 @@ def sync_collections(conn: psycopg.Connection, client: MediacloudClient) -> int:
     return n
 
 
-def sync_sources(conn: psycopg.Connection, client: MediacloudClient) -> int:
+def sync_sources(conn: psycopg.Connection[DictRow], client: MediacloudClient) -> int:
     now = _now_iso()
     total = 0
     batch: list[tuple] = []
@@ -163,19 +169,19 @@ def sync_sources(conn: psycopg.Connection, client: MediacloudClient) -> int:
     return total
 
 
-def print_summary(conn: psycopg.Connection) -> None:
+def print_summary(conn: psycopg.Connection[DictRow]) -> None:
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) AS c FROM collection")
-        n_coll = cur.fetchone()["c"]
-        cur.execute("SELECT COUNT(*) AS c FROM source")
-        n_src = cur.fetchone()["c"]
-        cur.execute("SELECT COUNT(*) AS c FROM source WHERE stories_per_week IS NOT NULL")
-        n_with_volume = cur.fetchone()["c"]
-        cur.execute(
+        def count(sql: LiteralString) -> int:
+            row = cur.execute(sql).fetchone()
+            return int(row["c"]) if row else 0
+
+        n_coll = count("SELECT COUNT(*) AS c FROM collection")
+        n_src = count("SELECT COUNT(*) AS c FROM source")
+        n_with_volume = count("SELECT COUNT(*) AS c FROM source WHERE stories_per_week IS NOT NULL")
+        n_dedup_domains = count(
             "SELECT COUNT(DISTINCT canonical_domain) AS c FROM source "
             "WHERE canonical_domain IS NOT NULL"
         )
-        n_dedup_domains = cur.fetchone()["c"]
         print()
         print(f"Collections:           {n_coll:>10,}")
         print(f"Sources:               {n_src:>10,}")
@@ -226,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         "INSERT INTO sync_run (started_at) VALUES (%s) RETURNING id",
         (started_at,),
     ).fetchone()
+    assert row is not None  # INSERT ... RETURNING always yields a row
     run_id = row["id"]
 
     error: str | None = None

@@ -6,11 +6,12 @@ from datetime import datetime
 from typing import Optional
 
 import psycopg
+from psycopg.rows import DictRow
 
 from clarion.timeutils import format_iso_datetime, parse_iso_datetime
 
 
-def _get_ts(conn: psycopg.Connection, key: str) -> Optional[datetime]:
+def _get_ts(conn: psycopg.Connection[DictRow], key: str) -> Optional[datetime]:
     row = conn.execute(
         "SELECT value FROM monitoring_state WHERE key=%s", (key,)
     ).fetchone()
@@ -22,7 +23,7 @@ def _get_ts(conn: psycopg.Connection, key: str) -> Optional[datetime]:
     return parse_iso_datetime(str(value), assume_local=True)
 
 
-def _set_ts(conn: psycopg.Connection, key: str, timestamp: datetime) -> None:
+def _set_ts(conn: psycopg.Connection[DictRow], key: str, timestamp: datetime) -> None:
     conn.execute(
         "INSERT INTO monitoring_state (key, value) VALUES (%s, %s) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=NOW()",
@@ -30,17 +31,17 @@ def _set_ts(conn: psycopg.Connection, key: str, timestamp: datetime) -> None:
     )
 
 
-def get_monitoring_start_time(conn: psycopg.Connection) -> Optional[datetime]:
+def get_monitoring_start_time(conn: psycopg.Connection[DictRow]) -> Optional[datetime]:
     return _get_ts(conn, "monitoring_start_time")
 
 
-def set_monitoring_start_time(conn: psycopg.Connection, timestamp: datetime) -> None:
+def set_monitoring_start_time(conn: psycopg.Connection[DictRow], timestamp: datetime) -> None:
     _set_ts(conn, "monitoring_start_time", timestamp)
 
 
-def get_last_check_time(conn: psycopg.Connection) -> Optional[datetime]:
+def get_last_check_time(conn: psycopg.Connection[DictRow]) -> Optional[datetime]:
     return _get_ts(conn, "last_check_time")
 
 
-def set_last_check_time(conn: psycopg.Connection, timestamp: datetime) -> None:
+def set_last_check_time(conn: psycopg.Connection[DictRow], timestamp: datetime) -> None:
     _set_ts(conn, "last_check_time", timestamp)
