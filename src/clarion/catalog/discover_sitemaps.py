@@ -1,4 +1,4 @@
-"""Walk robots.txt and sitemap indexes for sources from sources.db,
+"""Walk robots.txt and sitemap indexes for sources from the catalog,
 recording validated Google News sitemap URLs in source_sitemap.
 
 Classification is content-based, not URL-pattern based: a candidate is a
