@@ -47,7 +47,7 @@ def test_web_imports_only_the_sanctioned_surface():
         "clarion.config",
         "clarion.db",
         "clarion.digest.text",
-        "clarion.ingest.sources",
+        "clarion.ingest.streams",
         "clarion.logging",
         "clarion.timeutils",
     )
@@ -62,7 +62,7 @@ def test_web_imports_only_the_sanctioned_surface():
 
 
 def test_domains_do_not_import_each_other():
-    """One sanctioned exception: clarion.ingest.sources is the stream-type
+    """One sanctioned exception: clarion.ingest.streams is the stream-type
     contract (config schemas + registry) shared by catalog (writes stream
     rows), the web (validates forms), and the collector (runs streams).
     If the repo ever splits into distributions, that subpackage moves to
@@ -73,6 +73,6 @@ def test_domains_do_not_import_each_other():
         others = tuple(f"clarion.{o}" for o in domains if o != d)
         offenders += [
             o for o in _offenders(SRC / "clarion" / d, others)
-            if "clarion.ingest.sources" not in o
+            if "clarion.ingest.streams" not in o
         ]
     assert not offenders, f"domains must not import each other: {offenders}"

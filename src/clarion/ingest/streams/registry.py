@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Type
 
 from pydantic import BaseModel
 
-from clarion.ingest.sources.base import Stream
+from clarion.ingest.streams.base import Stream
 
 
 @dataclass(frozen=True)
@@ -70,10 +70,10 @@ def _register_builtins() -> None:
     imports until first call to avoid circular refs at module load."""
     if _REGISTRY:
         return
-    from clarion.ingest.sources.rss.config import RSSStreamConfig
-    from clarion.ingest.sources.rss.stream import RSSStream
-    from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
-    from clarion.ingest.sources.sitemap_news.stream import SitemapNewsStream
+    from clarion.ingest.streams.rss.config import RSSStreamConfig
+    from clarion.ingest.streams.rss.stream import RSSStream
+    from clarion.ingest.streams.sitemap_news.config import SitemapNewsStreamConfig
+    from clarion.ingest.streams.sitemap_news.stream import SitemapNewsStream
 
     register(
         StreamSpec(

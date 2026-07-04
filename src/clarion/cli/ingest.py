@@ -9,7 +9,7 @@ from clarion.cli.common import open_pool, prompt
 from clarion.config import settings
 from clarion.db.migrate import ensure_schema
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.sources import describe_stream_rows, get as get_stream_spec
+from clarion.ingest.streams import describe_stream_rows, get as get_stream_spec
 from clarion.ingest.supervisor import Supervisor
 
 

@@ -24,8 +24,8 @@ from xml.etree import ElementTree as ET
 import aiohttp
 
 from clarion.logging import get_logger
-from clarion.ingest.sources.base import Item, Stream
-from clarion.ingest.sources.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.streams.base import Item, Stream
+from clarion.ingest.streams.sitemap_news.config import SitemapNewsStreamConfig
 from clarion.timeutils import parse_iso_datetime, utc_now
 
 logger = get_logger(__name__)

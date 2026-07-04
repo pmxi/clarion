@@ -9,7 +9,7 @@ from flask import Flask
 from clarion.config import settings
 from clarion.db import pool as db_pool
 from clarion.db.migrate import ensure_schema
-from clarion.ingest.sources import ensure_loaded
+from clarion.ingest.streams import ensure_loaded
 from clarion.logging import get_logger
 
 logger = get_logger(__name__)

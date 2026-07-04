@@ -1,7 +1,7 @@
 """Shared stream abstractions and built-in stream implementations."""
 
-from clarion.ingest.sources.base import Item, Stream
-from clarion.ingest.sources.registry import (
+from clarion.ingest.streams.base import Item, Stream
+from clarion.ingest.streams.registry import (
     all_specs,
     build_stream,
     describe_stream_rows,

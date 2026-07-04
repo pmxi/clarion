@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import events as events_store
-from clarion.ingest.sources import Item
+from clarion.ingest.streams import Item
 from clarion.logging import get_logger
 
 logger = get_logger(__name__)

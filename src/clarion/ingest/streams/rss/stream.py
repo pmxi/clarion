@@ -16,8 +16,8 @@ import aiohttp
 import feedparser
 
 from clarion.logging import get_logger
-from clarion.ingest.sources.base import Item, Stream
-from clarion.ingest.sources.rss.config import RSSStreamConfig
+from clarion.ingest.streams.base import Item, Stream
+from clarion.ingest.streams.rss.config import RSSStreamConfig
 from clarion.timeutils import utc_now
 
 logger = get_logger(__name__)

@@ -28,7 +28,7 @@ Import rules (enforced by `tests/test_import_boundaries.py`):
 - `db` imports nothing from the domain packages.
 - Domains (`ingest`, `digest`, `catalog`) import only `db` and the flat
   utilities — never each other, with one sanctioned exception:
-  `clarion.ingest.sources` (stream config schemas + registry) is the
+  `clarion.ingest.streams` (stream config schemas + registry) is the
   shared stream-type contract, importable by catalog and the web.
 - `clarion` never imports `clarion_web`; the web app reaches the rest
   of the system only through `db`, the stream registry, the flat

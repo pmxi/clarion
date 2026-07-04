@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import state as state_store
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.sources import Item, Stream, all_specs, build_stream, ensure_loaded
+from clarion.ingest.streams import Item, Stream, all_specs, build_stream, ensure_loaded
 from clarion.ingest.writer import EventWriter
 from clarion.logging import get_logger
 from clarion.timeutils import utc_now

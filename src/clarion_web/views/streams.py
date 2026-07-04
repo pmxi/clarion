@@ -9,8 +9,8 @@ from flask import Blueprint, redirect, render_template, request, url_for
 from clarion.db import pool as db_pool
 from clarion.db.stores import events as events_store
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.sources import describe_stream_rows
-from clarion.ingest.sources import get as get_stream_spec
+from clarion.ingest.streams import describe_stream_rows
+from clarion.ingest.streams import get as get_stream_spec
 from clarion.timeutils import utc_now
 
 bp = Blueprint("streams", __name__)
