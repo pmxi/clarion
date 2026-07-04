@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Add news sitemap stream — Clarion{% endblock %}
+{% block content %}
+<section class="new-stream">
+  <h2>Add a Google News sitemap stream</h2>
+  <p class="hint">Clarion polls the publisher's <code>&lt;news:news&gt;</code> sitemap and stores each fresh article. Point it at a leaf sitemap (one that lists article URLs), not a sitemap index.</p>
+
+  {% if errors %}
+    <div class="errors" role="alert">
+      <strong>Couldn't save:</strong>
+      <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post">
+    <p>
+      <label for="name">Stream name</label>
+      <input id="name" name="name" type="text" value="{{ form.name }}" placeholder="e.g. 'bloomberg-news'" required spellcheck="false">
+      <span class="hint">Any short label — shown in dashboards and logs.</span>
+    </p>
+
+    <p>
+      <label for="sitemap_url">Sitemap URL</label>
+      <input id="sitemap_url" name="sitemap_url" type="url" value="{{ form.sitemap_url }}" placeholder="https://www.bloomberg.com/sitemaps/news/latest.xml" required spellcheck="false">
+    </p>
+
+    <p>
+      <label for="publication_name">Publication display name</label>
+      <input id="publication_name" name="publication_name" type="text" value="{{ form.publication_name }}" placeholder="defaults to the stream name" spellcheck="false">
+      <span class="hint">Fallback only — most sitemaps carry a per-article publication name that wins.</span>
+    </p>
+
+    <p>
+      <label for="poll_seconds">Poll interval (seconds)</label>
+      <input id="poll_seconds" name="poll_seconds" type="number" value="{{ form.poll_seconds }}" min="30" max="86400">
+      <span class="hint">News sitemaps list ~48h of articles, so 120 (2 min) keeps up with even busy publishers.</span>
+    </p>
+
+    <button type="submit">Save</button>
+    <a href="{{ url_for('streams.index') }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

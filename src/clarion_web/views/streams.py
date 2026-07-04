@@ -186,6 +186,58 @@ def new_rss():
     )
 
 
+@bp.route("/streams/new/sitemap", methods=["GET", "POST"])
+def new_sitemap():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        sitemap_url = request.form.get("sitemap_url", "").strip()
+        publication_name = request.form.get("publication_name", "").strip()
+        poll_str = request.form.get("poll_seconds", "120").strip()
+
+        errors: List[str] = []
+        if not name:
+            errors.append("Pick a friendly name for this stream.")
+        if not sitemap_url:
+            errors.append("Sitemap URL is required.")
+        try:
+            poll_seconds = int(poll_str)
+        except ValueError:
+            errors.append(f"Poll interval must be a number (got {poll_str!r}).")
+            poll_seconds = 120
+
+        with db_pool.connection() as conn:
+            if name and streams_store.get(conn, name):
+                errors.append(
+                    f"You already have a stream named {name!r}. Pick a different name."
+                )
+            if not errors:
+                try:
+                    config = get_stream_spec("sitemap_news").config_cls(
+                        sitemap_url=sitemap_url,
+                        publication_name=publication_name or name,
+                        poll_seconds=poll_seconds,
+                    )
+                except Exception as exc:
+                    errors.append(f"Invalid config: {exc}")
+                    config = None
+                if config is not None:
+                    streams_store.add(conn, name, "sitemap_news", config.model_dump_json())
+                    return redirect(url_for("streams.index"))
+
+        return render_template(
+            "new_sitemap_stream.html",
+            errors=errors,
+            form={"name": name, "sitemap_url": sitemap_url,
+                  "publication_name": publication_name, "poll_seconds": poll_str},
+        )
+
+    return render_template(
+        "new_sitemap_stream.html",
+        errors=[],
+        form={"name": "", "sitemap_url": "", "publication_name": "", "poll_seconds": "120"},
+    )
+
+
 @bp.route("/streams/<name>/toggle", methods=["POST"])
 def toggle(name: str):
     with db_pool.connection() as conn:

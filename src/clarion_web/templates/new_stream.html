@@ -9,6 +9,10 @@
       <a class="button" href="{{ url_for('streams.new_rss') }}">RSS / Atom feed</a>
       <span class="hint">Any RSS or Atom feed — news sites, blogs, Google Alerts, YouTube channels, arXiv, etc.</span>
     </li>
+    <li>
+      <a class="button" href="{{ url_for('streams.new_sitemap') }}">Google News sitemap</a>
+      <span class="hint">A publisher's <code>&lt;news:news&gt;</code> sitemap — a near-real-time wire of their headlines.</span>
+    </li>
   </ul>
   <p><a href="{{ url_for('streams.index') }}">Cancel</a></p>
 </section>
