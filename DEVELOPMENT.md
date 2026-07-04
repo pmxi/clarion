@@ -43,14 +43,10 @@
 - Migrate the live `oracle` deployment off the legacy Sentinel names: checkout
   path, the now-two systemd units (`clarion` + `clarion-web`), environment
   path, Postgres database, and Postgres role.
-- Next deploy needs `uv sync` (new runtime dep: psycopg-pool). Entry
-  points and systemd units are unchanged.
-- Next deploy also applies the v5 vocabulary renames at startup
-  (`stream.stream_type`→`source_type`, `story.article_count`→`event_count`,
-  `story_article`→`story_event`, `sources.discovery_run`→
-  `sitemap_discovery_run`). The renames happen the moment new code first
-  touches the DB, and old code can't read the renamed columns — so update
-  and restart the collector and web units together, not one at a time.
+- The v5 vocabulary renames (`stream.stream_type`→`source_type`,
+  `story.article_count`→`event_count`, `story_article`→`story_event`,
+  `sources.discovery_run`→`sitemap_discovery_run`) and the `event.score`
+  drop are deployed and applied on oracle as of 2026-07-04.
   `clarion digest build --min-articles` is now `--min-events`.
 - Wire up Postgres backups (see DEPLOYMENT "Things that need watching") —
   the event log is irreplaceable and lives on one VM disk. Highest-risk
