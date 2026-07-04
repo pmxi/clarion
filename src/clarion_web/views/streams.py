@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from flask import Blueprint, redirect, render_template, request, url_for
 
 from clarion.db import pool as db_pool
+from clarion.db.stores import events as events_store
 from clarion.db.stores import streams as streams_store
 from clarion.ingest.sources import describe_stream_rows
 from clarion.ingest.sources import get as get_stream_spec
@@ -82,59 +83,29 @@ def index():
 
 @bp.route("/streams/activity")
 def activity():
-    """Per-stream emission stats over a recent window.
-
-    Reads the last `window` rows of `event` (default 20k) and groups by
-    stream_name. Cheap because the outer filter uses the `id` BTREE index.
-    """
+    """Per-stream emission stats over a recent window of `event` rows
+    (default 20k)."""
     try:
         window = min(max(int(request.args.get("window", "20000")), 1000), 200000)
     except (TypeError, ValueError):
         window = 20000
 
     with db_pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT MAX(id) FROM event")
-            row = cur.fetchone()
-            max_id = (row["max"] if row else 0) or 0
-            low_id = max(0, max_id - window)
-            cur.execute(
-                """
-                SELECT
-                    stream_name              AS stream,
-                    source_type,
-                    MAX(observed_at)         AS last_seen,
-                    MIN(observed_at)         AS first_seen,
-                    COUNT(*)                 AS n
-                FROM event
-                WHERE id > %s
-                GROUP BY 1, 2
-                ORDER BY n DESC
-                """,
-                (low_id,),
-            )
-            rows = cur.fetchall()
-            cur.execute(
-                "SELECT COUNT(*) AS c FROM event WHERE id > %s", (low_id,),
-            )
-            total_row = cur.fetchone()
-            total = (total_row["c"] if total_row else 0) or 0
+        low_id = max(0, events_store.latest_id(conn) - window)
+        rows = events_store.activity_since(conn, low_id)
+        total = events_store.count_since(conn, low_id)
 
     # Compute rate per stream in items/min
     now = utc_now()
     activity_rows: List[Dict[str, Any]] = []
-    for r in rows:
-        d = r if isinstance(r, dict) else {
-            "stream": r[0], "source_type": r[1],
-            "last_seen": r[2], "first_seen": r[3], "n": r[4],
-        }
+    for d in rows:
         first = d["first_seen"]
         last = d["last_seen"]
         window_secs = max(1.0, (last - first).total_seconds()) if (first and last) else 60.0
         rate_per_min = d["n"] * 60.0 / window_secs if window_secs > 0 else 0
         age_secs = (now - last).total_seconds() if last else None
         activity_rows.append({
-            "stream": d["stream"] or "(unknown)",
+            "stream": d["stream_name"] or "(unknown)",
             "source_type": d["source_type"] or "?",
             "count": d["n"],
             "rate_per_min": rate_per_min,

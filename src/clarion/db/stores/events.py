@@ -91,6 +91,34 @@ def latest_id(conn: psycopg.Connection[DictRow]) -> int:
     return int(row["mx"]) if row else 0
 
 
+def activity_since(conn: psycopg.Connection[DictRow], after_id: int) -> List[Dict[str, Any]]:
+    """Per-(stream_name, source_type) emission stats for events after
+    `after_id`, busiest first. Cheap: the filter uses the id BTREE index."""
+    rows = conn.execute(
+        """
+        SELECT
+            stream_name,
+            source_type,
+            MAX(observed_at)         AS last_seen,
+            MIN(observed_at)         AS first_seen,
+            COUNT(*)                 AS n
+        FROM event
+        WHERE id > %s
+        GROUP BY 1, 2
+        ORDER BY n DESC
+        """,
+        (after_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_since(conn: psycopg.Connection[DictRow], after_id: int) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) AS c FROM event WHERE id > %s", (after_id,)
+    ).fetchone()
+    return int(row["c"]) if row else 0
+
+
 def fetch_since(
     conn: psycopg.Connection[DictRow], after_id: int, limit: int = 200
 ) -> List[Dict[str, Any]]:
