@@ -1,4 +1,4 @@
-"""`clarion init` and `clarion db ...` — setup and schema administration."""
+"""`clarion init` — first-run setup."""
 
 from __future__ import annotations
 
@@ -25,17 +25,5 @@ def cmd_init(_args: argparse.Namespace) -> None:
     print("  - Drive test load: clarion dev firehose --rate 20 --count 200")
 
 
-def cmd_db_migrate(_args: argparse.Namespace) -> None:
-    with open_pool().connection() as conn:
-        ensure_schema(conn)
-    print("Schema is up to date.")
-
-
 def register(sub: argparse._SubParsersAction) -> None:
     sub.add_parser("init", help="Configure the runtime").set_defaults(func=cmd_init)
-
-    db = sub.add_parser("db", help="Database administration")
-    db_sub = db.add_subparsers(dest="db_cmd", required=True)
-    db_sub.add_parser(
-        "migrate", help="Apply schema.sql idempotently"
-    ).set_defaults(func=cmd_db_migrate)

@@ -1,7 +1,8 @@
 """Clarion CLI — the composition root that wires every domain together.
 
-Each domain contributes its commands via a register(subparsers) function;
-this module only assembles the parser and dispatches.
+One module per top-level command; each contributes its commands via a
+register(subparsers) function and this module only assembles the parser
+and dispatches.
 """
 
 from __future__ import annotations
@@ -10,15 +11,17 @@ import argparse
 import sys
 from typing import Optional
 
-from clarion.cli import admin, catalog, dev, digest, ingest
+from clarion.cli import catalog, db, dev, digest, init, run, stream
 from clarion.db import pool as db_pool
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="clarion")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    admin.register(sub)
-    ingest.register(sub)
+    init.register(sub)
+    db.register(sub)
+    run.register(sub)
+    stream.register(sub)
     digest.register(sub)
     catalog.register(sub)
     dev.register(sub)

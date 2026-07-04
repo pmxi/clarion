@@ -1,24 +1,12 @@
-"""`clarion run` and `clarion stream ...` — the collection domain."""
+"""`clarion stream ...` — manage configured data streams."""
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 
 from clarion.cli.common import open_pool, prompt
-from clarion.config import settings
-from clarion.db.migrate import ensure_schema
 from clarion.db.stores import streams as streams_store
 from clarion.ingest.streams import describe_stream_rows, get as get_stream_spec
-from clarion.ingest.supervisor import Supervisor
-
-
-def cmd_run(_args: argparse.Namespace) -> None:
-    pool = open_pool()
-    with pool.connection() as conn:
-        ensure_schema(conn)
-        settings.load(conn)
-    asyncio.run(Supervisor(pool).run())
 
 
 def cmd_stream_list(_args: argparse.Namespace) -> None:
@@ -82,8 +70,6 @@ def _prompt_rss_stream() -> str:
 
 
 def register(sub: argparse._SubParsersAction) -> None:
-    sub.add_parser("run", help="Start the collector supervisor").set_defaults(func=cmd_run)
-
     stream = sub.add_parser("stream", help="Manage data streams")
     stream_sub = stream.add_subparsers(dest="stream_cmd", required=True)
 
