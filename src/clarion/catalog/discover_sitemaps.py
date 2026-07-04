@@ -14,20 +14,29 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import gzip
 import re
 import sys
 from dataclasses import dataclass, field
-
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import Any
 from xml.etree import ElementTree as ET
 
 import aiohttp
 
 from clarion.catalog.db import open_db
+from clarion.catalog.discovery import (
+    FetchResult,
+    base_arg_parser,
+    finish_run,
+    looks_gzipped,
+    select_sources,
+    start_run,
+    walk_sources,
+)
+from clarion.catalog import discovery
 from clarion.logging import get_logger
 from clarion.timeutils import parse_iso_datetime, utc_now_iso
 
@@ -38,6 +47,8 @@ USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; news-sitemap-fin
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30)
 PER_WALK_DELAY = 1.0
 INDEX_CHILD_FETCH_LIMIT = 8
+
+fetch = partial(discovery.fetch, timeout=HTTP_TIMEOUT)
 
 # Index children whose path encodes a year (or year-month) are almost
 # always archives of stale content, not the live news sitemap. Deprioritize
@@ -64,10 +75,6 @@ def _parse_iso(value: str) -> datetime | None:
         return None
 
 
-def _looks_gzipped(raw: bytes) -> bool:
-    return len(raw) >= 2 and raw[0] == 0x1F and raw[1] == 0x8B
-
-
 def parse_sitemap_lines(robots_text: str) -> list[str]:
     out: list[str] = []
     for line in robots_text.splitlines():
@@ -83,15 +90,6 @@ def parse_sitemap_lines(robots_text: str) -> list[str]:
 
 
 @dataclass
-class FetchResult:
-    status: int
-    body: bytes
-    etag: str | None = None
-    last_modified: str | None = None
-    error: str | None = None
-
-
-@dataclass
 class SitemapInfo:
     kind: str  # 'news' | 'index' | 'urlset' | 'unknown' | 'error'
     children: list[str] = field(default_factory=list)
@@ -100,24 +98,10 @@ class SitemapInfo:
     error: str | None = None
 
 
-async def fetch(session: aiohttp.ClientSession, url: str) -> FetchResult:
-    try:
-        async with session.get(url, timeout=HTTP_TIMEOUT, allow_redirects=True) as resp:
-            body = await resp.read()
-            return FetchResult(
-                status=resp.status,
-                body=body,
-                etag=resp.headers.get("etag"),
-                last_modified=resp.headers.get("last-modified"),
-            )
-    except Exception as exc:
-        return FetchResult(status=0, body=b"", error=str(exc))
-
-
 def classify(body: bytes) -> SitemapInfo:
     if not body:
         return SitemapInfo(kind="error", error="empty body")
-    if _looks_gzipped(body):
+    if looks_gzipped(body):
         try:
             body = gzip.decompress(body)
         except Exception as exc:
@@ -274,6 +258,23 @@ def _row(
     }
 
 
+def _crash_row(source_id: int, domain: str, error: str) -> dict[str, Any]:
+    return {
+        "source_id": source_id,
+        "sitemap_url": f"https://{domain}/robots.txt",
+        "kind": "error",
+        "discovered_via": "robots",
+        "http_status": None,
+        "fresh_entries_24h": 0,
+        "latest_pub_date": None,
+        "etag": None,
+        "last_modified": None,
+        "last_checked_at": utc_now_iso(),
+        "last_ok_at": None,
+        "error": f"crash: {error}",
+    }
+
+
 UPSERT_SQL = """
 INSERT INTO source_sitemap
     (source_id, sitemap_url, kind, discovered_via, http_status, fresh_entries_24h,
@@ -296,40 +297,6 @@ ON CONFLICT(source_id, sitemap_url) DO UPDATE SET
 """
 
 
-def select_sources(conn, args) -> list[tuple[int, str]]:
-    with conn.cursor() as cur:
-        if args.domains:
-            cur.execute(
-                """
-                SELECT id, canonical_domain FROM source
-                WHERE canonical_domain = ANY(%s)
-                  AND stories_per_week IS NOT NULL
-                ORDER BY stories_per_week DESC
-                """,
-                (args.domains,),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT id, canonical_domain FROM source
-                WHERE canonical_domain IS NOT NULL
-                  AND stories_per_week >= %s
-                ORDER BY stories_per_week DESC
-                LIMIT %s
-                """,
-                (args.min_spw, args.limit),
-            )
-        rows = cur.fetchall()
-    seen: set[str] = set()
-    deduped: list[tuple[int, str]] = []
-    for r in rows:
-        if r["canonical_domain"] in seen:
-            continue
-        seen.add(r["canonical_domain"])
-        deduped.append((r["id"], r["canonical_domain"]))
-    return deduped
-
-
 async def main_async(args) -> int:
     conn = open_db()
 
@@ -338,50 +305,23 @@ async def main_async(args) -> int:
         print("no sources match the filter")
         return 1
 
-    started_at = utc_now_iso()
-    row = conn.execute(
-        "INSERT INTO sitemap_discovery_run (started_at) VALUES (%s) RETURNING id",
-        (started_at,),
-    ).fetchone()
-    assert row is not None  # INSERT ... RETURNING always yields a row
-    run_id = row["id"]
+    run_id = start_run(conn, "sitemap_discovery_run")
 
     logger.info("walking %d sources (concurrency=%d)", len(sources), args.concurrency)
+    outcomes = await walk_sources(
+        sources,
+        walk_source,
+        concurrency=args.concurrency,
+        user_agent=USER_AGENT,
+    )
 
-    sem = asyncio.Semaphore(args.concurrency)
-    headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip, deflate"}
-    connector = aiohttp.TCPConnector(limit=args.concurrency, limit_per_host=1, ttl_dns_cache=300)
-
-    async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
-        async def bounded(source_id: int, domain: str) -> list[dict[str, Any]]:
-            async with sem:
-                try:
-                    return await walk_source(session, source_id, domain)
-                except Exception as exc:
-                    logger.exception("walk crashed for %s", domain)
-                    return [{
-                        "source_id": source_id,
-                        "sitemap_url": f"https://{domain}/robots.txt",
-                        "kind": "error",
-                        "discovered_via": "robots",
-                        "http_status": None,
-                        "fresh_entries_24h": 0,
-                        "latest_pub_date": None,
-                        "etag": None,
-                        "last_modified": None,
-                        "last_checked_at": utc_now_iso(),
-                        "last_ok_at": None,
-                        "error": f"crash: {exc!r}",
-                    }]
-
-        tasks = [asyncio.create_task(bounded(sid, dom)) for sid, dom in sources]
-
-        all_rows: list[dict[str, Any]] = []
-        for i, coro in enumerate(asyncio.as_completed(tasks), 1):
-            walked = await coro
+    domain_by_id = dict(sources)
+    all_rows: list[dict[str, Any]] = []
+    for sid, walked, error in outcomes:
+        if walked is None:
+            all_rows.append(_crash_row(sid, domain_by_id[sid], error or "unknown"))
+        else:
             all_rows.extend(walked)
-            if i % 25 == 0 or i == len(tasks):
-                logger.info("completed %d/%d", i, len(tasks))
 
     with conn.cursor() as cur:
         cur.executemany(UPSERT_SQL, all_rows)
@@ -394,11 +334,10 @@ async def main_async(args) -> int:
     n_error = sum(1 for r in all_rows if r["kind"] == "error")
     sources_with_news = len({r["source_id"] for r in all_rows if r["kind"] == "news" and r["fresh_entries_24h"] > 0})
 
-    conn.execute(
-        "UPDATE sitemap_discovery_run SET finished_at=%s, sources_checked=%s, "
-        "news_sitemaps_found=%s WHERE id=%s",
-        (utc_now_iso(), len(sources), n_news_fresh, run_id),
-    )
+    finish_run(conn, "sitemap_discovery_run", run_id, {
+        "sources_checked": len(sources),
+        "news_sitemaps_found": n_news_fresh,
+    })
     conn.close()
 
     print()
@@ -416,18 +355,8 @@ async def main_async(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=20, help="max sources to walk (ignored if --domains is set)")
-    parser.add_argument("--min-spw", type=int, default=50, help="minimum stories_per_week filter")
-    parser.add_argument("--concurrency", type=int, default=20)
-    parser.add_argument(
-        "--domains",
-        type=lambda s: [d.strip() for d in s.split(",") if d.strip()],
-        default=None,
-        help="explicit comma-separated canonical_domain list (overrides --limit/--min-spw)",
-    )
+    parser = base_arg_parser(__doc__, default_concurrency=20)
     args = parser.parse_args(argv)
-
     return asyncio.run(main_async(args))
 
 

@@ -17,13 +17,13 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import gzip
 import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
@@ -32,6 +32,17 @@ import aiohttp
 import feedparser
 
 from clarion.catalog.db import open_db
+from clarion.catalog.discovery import (
+    FetchResult,
+    WalkOutcome,
+    base_arg_parser,
+    finish_run,
+    looks_gzipped,
+    select_sources,
+    start_run,
+    walk_sources,
+)
+from clarion.catalog import discovery
 from clarion.logging import get_logger
 from clarion.timeutils import utc_now_iso
 
@@ -40,6 +51,8 @@ logger = get_logger(__name__)
 USER_AGENT = "Mozilla/5.0 (compatible; ClarionDiscoveryBot/0.1; rss-feed-finder)"
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20)
 PER_HOST_DELAY = 1.0
+
+fetch = partial(discovery.fetch, timeout=HTTP_TIMEOUT)
 
 COMMON_PATHS = ("/feed", "/rss", "/feed.xml", "/atom.xml", "/index.xml", "/rss.xml", "/feeds/posts/default")
 
@@ -50,19 +63,6 @@ FEED_TYPES = {
     "application/xml": "rss",  # ambiguous; treat as rss candidate
     "text/xml": "rss",          # same
 }
-
-
-def _looks_gzipped(raw: bytes) -> bool:
-    return len(raw) >= 2 and raw[0] == 0x1F and raw[1] == 0x8B
-
-
-@dataclass
-class FetchResult:
-    status: int
-    body: bytes
-    etag: str | None = None
-    last_modified: str | None = None
-    error: str | None = None
 
 
 @dataclass
@@ -147,25 +147,11 @@ def extract_link_candidates(html_bytes: bytes, base_url: str) -> list[tuple[str,
     return deduped
 
 
-async def fetch(session: aiohttp.ClientSession, url: str, timeout: aiohttp.ClientTimeout = HTTP_TIMEOUT) -> FetchResult:
-    try:
-        async with session.get(url, timeout=timeout, allow_redirects=True) as resp:
-            body = await resp.read()
-            return FetchResult(
-                status=resp.status,
-                body=body,
-                etag=resp.headers.get("etag"),
-                last_modified=resp.headers.get("last-modified"),
-            )
-    except Exception as exc:
-        return FetchResult(status=0, body=b"", error=str(exc))
-
-
 def validate_feed(raw: bytes) -> FeedInfo:
     """Parse bytes via feedparser; classify and pull a few metadata fields."""
     if not raw:
         return FeedInfo(kind="error", error="empty body")
-    if _looks_gzipped(raw):
+    if looks_gzipped(raw):
         try:
             raw = gzip.decompress(raw)
         except Exception as exc:
@@ -335,57 +321,28 @@ def _row(source_id: int, df: DiscoveredFeed) -> dict[str, Any]:
     }
 
 
-def select_sources(conn, args) -> list[tuple[int, str]]:
-    with conn.cursor() as cur:
-        if args.domains:
-            cur.execute(
-                """
-                SELECT id, canonical_domain, homepage FROM source
-                WHERE canonical_domain = ANY(%s)
-                  AND homepage IS NOT NULL
-                ORDER BY stories_per_week DESC NULLS LAST
-                """,
-                (args.domains,),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT id, canonical_domain, homepage FROM source
-                WHERE homepage IS NOT NULL
-                  AND canonical_domain IS NOT NULL
-                  AND stories_per_week >= %s
-                ORDER BY stories_per_week DESC
-                LIMIT %s
-                """,
-                (args.min_spw, args.limit),
-            )
-        rows = cur.fetchall()
-    seen: set[str] = set()
-    out: list[tuple[int, str]] = []
-    for r in rows:
-        dom = r["canonical_domain"]
-        if dom in seen:
-            continue
-        seen.add(dom)
-        out.append((r["id"], r["homepage"]))
-    return out
+def _log_progress(done: int, total: int, outcomes: list[WalkOutcome]) -> None:
+    feeds_so_far = sum(len(feeds) for _, feeds, _ in outcomes if feeds)
+    mc = sum(
+        1
+        for _, feeds, _ in outcomes
+        if feeds
+        for df in feeds
+        if df.discovered_via == "mediacloud"
+    )
+    logger.info("completed %d/%d (validated feeds so far: %d, mc fallbacks: %d)",
+                done, total, feeds_so_far, mc)
 
 
 async def main_async(args) -> int:
     conn = open_db()
 
-    sources = select_sources(conn, args)
+    sources = select_sources(conn, args, value_column="homepage")
     if not sources:
         print("no sources match the filter")
         return 1
 
-    started_at = utc_now_iso()
-    row = conn.execute(
-        "INSERT INTO feed_discovery_run (started_at) VALUES (%s) RETURNING id",
-        (started_at,),
-    ).fetchone()
-    assert row is not None  # INSERT ... RETURNING always yields a row
-    run_id = row["id"]
+    run_id = start_run(conn, "feed_discovery_run")
 
     mc_fallback: MediaCloudFeedFetcher | None = None
     if args.mediacloud_fallback:
@@ -401,36 +358,21 @@ async def main_async(args) -> int:
     logger.info("walking %d sources (concurrency=%d, mc_fallback=%s)",
                 len(sources), args.concurrency, mc_fallback is not None)
 
-    sem = asyncio.Semaphore(args.concurrency)
-    headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip, deflate"}
-    connector = aiohttp.TCPConnector(limit=args.concurrency * 2, limit_per_host=1, ttl_dns_cache=300)
+    async def walk_one(session: aiohttp.ClientSession, source_id: int, homepage: str) -> list[DiscoveredFeed]:
+        return await discover_for_source(session, source_id, homepage, mc_fallback)
 
-    pairs: list[tuple[int, list[DiscoveredFeed]]] = []
-    mc_fallback_count = 0
-
-    async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
-        async def bounded(source_id: int, homepage: str) -> tuple[int, list[DiscoveredFeed]]:
-            async with sem:
-                try:
-                    feeds = await discover_for_source(session, source_id, homepage, mc_fallback)
-                    return source_id, feeds
-                except Exception:
-                    logger.exception("discover crashed for source %d (%s)", source_id, homepage)
-                    return source_id, []
-
-        tasks = [asyncio.create_task(bounded(sid, hp)) for sid, hp in sources]
-        completed = 0
-        for coro in asyncio.as_completed(tasks):
-            sid, feeds = await coro
-            pairs.append((sid, feeds))
-            for df in feeds:
-                if df.discovered_via == "mediacloud":
-                    mc_fallback_count += 1
-            completed += 1
-            if completed % 100 == 0 or completed == len(tasks):
-                feeds_so_far = sum(len(p[1]) for p in pairs)
-                logger.info("completed %d/%d (validated feeds so far: %d, mc fallbacks: %d)",
-                            completed, len(tasks), feeds_so_far, mc_fallback_count)
+    outcomes = await walk_sources(
+        sources,
+        walk_one,
+        concurrency=args.concurrency,
+        user_agent=USER_AGENT,
+        connector_limit=args.concurrency * 2,
+        progress_every=100,
+        on_progress=_log_progress,
+    )
+    pairs: list[tuple[int, list[DiscoveredFeed]]] = [
+        (sid, feeds or []) for sid, feeds, _ in outcomes
+    ]
 
     # Persist
     total_feeds = 0
@@ -440,17 +382,17 @@ async def main_async(args) -> int:
                 cur.execute(UPSERT_SQL, _row(sid, df))
                 total_feeds += 1
 
-    conn.execute(
-        "UPDATE feed_discovery_run SET finished_at=%s, sources_checked=%s, "
-        "feeds_found=%s, mediacloud_fallbacks=%s WHERE id=%s",
-        (utc_now_iso(), len(sources), total_feeds, mc_fallback_count, run_id),
-    )
+    n_mc = sum(1 for _, feeds in pairs for df in feeds if df.discovered_via == "mediacloud")
+    finish_run(conn, "feed_discovery_run", run_id, {
+        "sources_checked": len(sources),
+        "feeds_found": total_feeds,
+        "mediacloud_fallbacks": n_mc,
+    })
     conn.close()
 
     sources_with_feed = sum(1 for _, feeds in pairs if feeds)
     n_homepage = sum(1 for _, feeds in pairs for df in feeds if df.discovered_via == "homepage_link")
     n_common = sum(1 for _, feeds in pairs for df in feeds if df.discovered_via == "common_path")
-    n_mc = sum(1 for _, feeds in pairs for df in feeds if df.discovered_via == "mediacloud")
     print()
     print(f"feed_discovery_run_id:    {run_id}")
     print(f"Sources walked:           {len(sources):>6}")
@@ -463,16 +405,7 @@ async def main_async(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=20, help="max sources to walk (ignored if --domains)")
-    parser.add_argument("--min-spw", type=int, default=50, help="minimum stories_per_week")
-    parser.add_argument("--concurrency", type=int, default=50)
-    parser.add_argument(
-        "--domains",
-        type=lambda s: [d.strip() for d in s.split(",") if d.strip()],
-        default=None,
-        help="comma-separated canonical_domain list (overrides --limit/--min-spw)",
-    )
+    parser = base_arg_parser(__doc__, default_concurrency=50)
     parser.add_argument(
         "--mediacloud-fallback",
         action="store_true",
