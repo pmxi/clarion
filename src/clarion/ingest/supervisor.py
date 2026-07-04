@@ -13,7 +13,7 @@ import time
 from typing import Any, Dict, Optional
 
 from clarion.db.pool import DictConnectionPool
-from clarion.db.stores import state as state_store
+from clarion.db.stores import monitoring as monitoring_store
 from clarion.db.stores import streams as streams_store
 from clarion.ingest.streams import Item, Stream, all_specs, build_stream, ensure_loaded
 from clarion.ingest.writer import EventWriter
@@ -88,8 +88,8 @@ class Supervisor:
 
     def _init_monitoring_state(self) -> None:
         with self.pool.connection() as conn:
-            if state_store.get_monitoring_start_time(conn) is None:
-                state_store.set_monitoring_start_time(conn, utc_now())
+            if monitoring_store.get_monitoring_start_time(conn) is None:
+                monitoring_store.set_monitoring_start_time(conn, utc_now())
 
     def _list_streams(self):
         with self.pool.connection() as conn:
@@ -243,7 +243,7 @@ class Supervisor:
         self._last_check_ts_monotonic = now
         try:
             with self.pool.connection() as conn:
-                state_store.set_last_check_time(conn, utc_now())
+                monitoring_store.set_last_check_time(conn, utc_now())
         except Exception as exc:
             logger.warning("update_last_check_time failed: %s", exc)
 

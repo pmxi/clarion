@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from clarion.db import pool as db_pool
 from clarion.db.stores import events as events_store
-from clarion.db.stores import state as state_store
+from clarion.db.stores import monitoring as monitoring_store
 from clarion.timeutils import utc_now
 
 _TOPICS = (
@@ -53,8 +53,8 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
     interval_seconds = 1.0 / config.rate
 
     with db_pool.raw_connection(database_url) as conn:
-        if state_store.get_monitoring_start_time(conn) is None:
-            state_store.set_monitoring_start_time(conn, utc_now())
+        if monitoring_store.get_monitoring_start_time(conn) is None:
+            monitoring_store.set_monitoring_start_time(conn, utc_now())
 
         while config.count is None or emitted < config.count:
             started = time.perf_counter()
@@ -73,7 +73,7 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
                 author=author,
                 received_at=now,
             )
-            state_store.set_last_check_time(conn, now)
+            monitoring_store.set_last_check_time(conn, now)
 
             emitted += 1
             remaining = interval_seconds - (time.perf_counter() - started)
