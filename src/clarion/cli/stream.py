@@ -6,7 +6,7 @@ import argparse
 
 from clarion.cli.common import open_pool, prompt
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.streams import describe_stream_rows, get as get_stream_spec
+from clarion.ingest.streams import all_specs, build_config_json, describe_stream_rows
 
 
 def cmd_stream_list(_args: argparse.Namespace) -> None:
@@ -28,45 +28,31 @@ def cmd_stream_remove(args: argparse.Namespace) -> None:
 
 
 def cmd_stream_add(args: argparse.Namespace) -> None:
+    types = sorted(all_specs())
     source_type = args.type
     if not source_type:
-        print("Stream types: (1) rss  (2) sitemap_news")
-        choice = prompt("Choose stream type", default="1")
-        source_type = {
-            "1": "rss",
-            "2": "sitemap_news",
-            "rss": "rss",
-            "sitemap_news": "sitemap_news",
-        }.get(choice.lower(), "rss")
+        print("Stream types: " + "  ".join(f"({i}) {t}" for i, t in enumerate(types, 1)))
+        choice = prompt("Choose stream type", default="1").lower()
+        source_type = dict(enumerate(types, 1)).get(int(choice) if choice.isdigit() else 0, choice)
+    if source_type not in types:
+        raise SystemExit(f"Unknown stream type: {source_type!r}")
 
     name = prompt("Stream name (e.g. 'personal', 'hn-frontpage')")
     if not name:
         raise SystemExit("Stream name is required.")
 
-    if source_type == "rss":
-        config_json = _prompt_rss_stream()
-    elif source_type == "sitemap_news":
-        sitemap_url = prompt("Sitemap URL (e.g. https://www.bloomberg.com/sitemaps/news/latest.xml)")
-        publication = prompt("Publication display name", default=name)
-        config_json = get_stream_spec("sitemap_news").config_cls(
-            sitemap_url=sitemap_url,
-            publication_name=publication,
-        ).model_dump_json()
-    else:
-        raise SystemExit(f"Unknown stream type: {source_type!r}")
+    raw = {
+        field.name: prompt(field.label, default=field.default)
+        for field in all_specs()[source_type].form_fields
+    }
+    try:
+        config_json = build_config_json(source_type, raw)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid config: {exc}") from exc
 
     with open_pool().connection() as conn:
         streams_store.add(conn, name, source_type, config_json)
     print(f"\nAdded stream {name!r} (type={source_type}).")
-
-
-def _prompt_rss_stream() -> str:
-    feed_url = prompt("Feed URL (RSS or Atom)")
-    if not feed_url:
-        raise SystemExit("feed_url is required.")
-    poll_seconds = int(prompt("Poll interval (seconds)", default="300"))
-    config = get_stream_spec("rss").config_cls(feed_url=feed_url, poll_seconds=poll_seconds)
-    return config.model_dump_json()
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -76,7 +62,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     stream_sub.add_parser("list").set_defaults(func=cmd_stream_list)
 
     add = stream_sub.add_parser("add")
-    add.add_argument("--type", choices=["rss", "sitemap_news"], help="Stream type")
+    add.add_argument("--type", choices=sorted(all_specs()), help="Stream type")
     add.set_defaults(func=cmd_stream_add)
 
     rm = stream_sub.add_parser("remove")
