@@ -41,7 +41,7 @@ ALTER INDEX IF EXISTS story_article_event_idx RENAME TO story_event_event_id_idx
 
 -- Orphaned since the classifier's removal; only the pre-v5 collector still
 -- named it in INSERTs, and the v5 deploy replaces that collector.
-ALTER TABLE event DROP COLUMN IF EXISTS score;
+ALTER TABLE IF EXISTS event DROP COLUMN IF EXISTS score;
 """
 
 

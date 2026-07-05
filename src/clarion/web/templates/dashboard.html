@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Clarion{% endblock %}
+{% block content %}
+<section>
+  <h2>Status</h2>
+  <dl>
+    <dt>Collector</dt>
+    <dd class="{{ 'ok' if health.ok else 'warn' }}">{{ health.status }}</dd>
+    <dt>Monitoring since</dt>
+    <dd>{{ monitoring_start or '—' }}</dd>
+    <dt>Last check</dt>
+    <dd>{{ last_check or '—' }}</dd>
+    <dt>Events collected</dt>
+    <dd>{{ event_count }}</dd>
+    <dt>Streams configured</dt>
+    <dd>{{ streams_count }}</dd>
+  </dl>
+</section>
+
+<section id="live-feed">
+  <h2>
+    Live feed
+    <span id="live-status" class="muted">connecting…</span>
+    <span id="live-rate" class="col-rate"></span>
+    <button type="button" id="live-pause" class="live-pause">Pause</button>
+  </h2>
+  <div id="scroll-fire" class="live-scroll">
+    <ul id="list-fire" class="live-list">
+      <li class="live-empty">Waiting for the next event…</li>
+    </ul>
+    <button type="button" id="jump-fire" class="live-jump" hidden>↓ <span id="jumpn-fire">0</span> new</button>
+  </div>
+</section>
+
+<section>
+  <h2>Recently collected</h2>
+  {% if recent %}
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Source</th><th>Stream</th><th>Author</th><th>Title</th></tr>
+      </thead>
+      <tbody>
+      {% for row in recent %}
+        <tr>
+          <td><time>{{ row.observed_at }}</time></td>
+          <td>{{ row.source_type }}</td>
+          <td>{{ row.stream_name }}</td>
+          <td>{{ row.author }}</td>
+          <td>{{ row.title }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Nothing collected yet.</p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  const MAX_ITEMS = 200;
+  const FOLLOW_THRESHOLD_PX = 40;
+
+  const status = document.getElementById("live-status");
+  const pauseBtn = document.getElementById("live-pause");
+  const listEl = document.getElementById("list-fire");
+  const scrollEl = document.getElementById("scroll-fire");
+  const jumpBtnEl = document.getElementById("jump-fire");
+  const jumpNEl = document.getElementById("jumpn-fire");
+  const rateEl = document.getElementById("live-rate");
+
+  let paused = false;
+  let hidden = 0;
+  const recent = [];
+
+  const isFollowing = () =>
+    scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight <= FOLLOW_THRESHOLD_PX;
+
+  function append(rowEl) {
+    const empty = listEl.querySelector(".live-empty");
+    if (empty) empty.remove();
+    const wasFollowing = isFollowing();
+    listEl.appendChild(rowEl);
+    while (listEl.children.length > MAX_ITEMS) listEl.removeChild(listEl.firstChild);
+    if (wasFollowing) {
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+    } else {
+      hidden += 1;
+      jumpNEl.textContent = hidden;
+      jumpBtnEl.hidden = false;
+    }
+    recent.push(performance.now());
+  }
+
+  scrollEl.addEventListener("scroll", () => {
+    if (isFollowing()) { hidden = 0; jumpBtnEl.hidden = true; }
+  });
+  jumpBtnEl.addEventListener("click", () => {
+    scrollEl.scrollTop = scrollEl.scrollHeight;
+    hidden = 0;
+    jumpBtnEl.hidden = true;
+  });
+
+  function renderRow(data) {
+    const li = document.createElement("li");
+    li.className = "live-item";
+
+    const title = document.createElement("span");
+    title.className = "live-title";
+    if (data.url) {
+      const a = document.createElement("a");
+      a.href = data.url; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = data.title || "(no title)";
+      title.appendChild(a);
+    } else {
+      title.textContent = data.title || "(no title)";
+    }
+
+    const meta = document.createElement("span");
+    meta.className = "live-meta";
+    // For sitemap_news the publication is already in stream_name, so
+    // author is duplicative.
+    const showAuthor = data.author && data.author !== data.stream_name;
+    const parts = [data.source_type];
+    if (data.stream_name) parts.push(data.stream_name);
+    if (showAuthor) parts.push(data.author);
+    meta.textContent = parts.join(" · ");
+
+    li.appendChild(title); li.appendChild(meta);
+    return li;
+  }
+
+  setInterval(() => {
+    const cutoff = performance.now() - 5000;
+    while (recent.length && recent[0] < cutoff) recent.shift();
+    const perSec = recent.length / 5;
+    rateEl.textContent = perSec >= 0.1 ? `${perSec.toFixed(1)}/s` : "";
+  }, 500);
+
+  pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    pauseBtn.textContent = paused ? "Resume" : "Pause";
+    pauseBtn.classList.toggle("active", paused);
+  });
+
+  const es = new EventSource("{{ url_for('live.events_stream') }}");
+  es.addEventListener("open", () => { status.textContent = "live"; status.className = "ok"; });
+  es.addEventListener("error", () => { status.textContent = "reconnecting…"; status.className = "warn"; });
+  es.addEventListener("event_received", (ev) => {
+    if (paused) return;
+    try { append(renderRow(JSON.parse(ev.data))); } catch (e) { console.error(e); }
+  });
+})();
+</script>
+{% endblock %}

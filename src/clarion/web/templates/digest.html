@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{% if day %}Digest {{ day.isoformat() }}{% else %}Digest{% endif %} — Clarion{% endblock %}
+{% block content %}
+
+{% if day is none %}
+<section>
+  <h2>Daily digest</h2>
+  <p class="live-empty">
+    No digest has been built yet. Run
+    <code>clarion digest build --day yesterday</code> to cluster a day's
+    articles into stories, then reload this page.
+  </p>
+</section>
+{% else %}
+
+<section>
+  <div class="digest-head">
+    <h2>
+      Daily digest
+      <span class="muted">{{ day.strftime("%A, %B %-d, %Y") }} (UTC)</span>
+    </h2>
+    <div class="digest-daynav">
+      {% if prev_day %}<a href="{{ url_for('digest.day', day=prev_day.isoformat(), lang=lang or none) }}">&larr; {{ prev_day.isoformat() }}</a>{% endif %}
+      {% if next_day %}<a href="{{ url_for('digest.day', day=next_day.isoformat(), lang=lang or none) }}">{{ next_day.isoformat() }} &rarr;</a>{% endif %}
+    </div>
+  </div>
+
+  <p class="hint">
+    {{ "{:,}".format(total) }} stories
+    {% if lang %}in <strong>{{ lang }}</strong>{% endif %}
+    &middot; {{ "{:,}".format(stats.events) }} articles clustered
+    &middot; ranked by breadth of coverage (distinct publications)
+    {% if stats.built_at %}&middot; built {{ stats.built_at.strftime("%H:%M UTC") }}{% endif %}
+  </p>
+
+  {% if langs %}
+  <p class="digest-langs">
+    <a href="{{ url_for('digest.day', day=day.isoformat()) }}" {% if not lang %}class="active"{% endif %}>all</a>
+    {% for l, n in langs %}
+    <a href="{{ url_for('digest.day', day=day.isoformat(), lang=l) }}" {% if lang == l %}class="active"{% endif %}>{{ l }} <span class="muted">{{ n }}</span></a>
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if not stories %}
+  <p class="live-empty">No stories for this day{% if lang %} in “{{ lang }}”{% endif %}.</p>
+  {% endif %}
+
+  <ol class="story-list" start="{{ offset + 1 }}">
+    {% for s in stories %}
+    <li class="story">
+      <div class="story-title">
+        {% if s.rep_url %}<a href="{{ s.rep_url }}" target="_blank" rel="noopener noreferrer">{{ s.title }}</a>
+        {% else %}{{ s.title }}{% endif %}
+      </div>
+      <div class="story-meta">
+        <strong>{{ s.source_count }}</strong> source{{ "s" if s.source_count != 1 }}
+        &middot; {{ s.event_count }} article{{ "s" if s.event_count != 1 }}
+        {% if s.lang %}&middot; {{ s.lang }}{% endif %}
+        {% if s.top_domains %}&middot; {{ s.top_domains | join(", ") }}{% endif %}
+      </div>
+      {% set mlist = members.get(s.id, []) %}
+      {% if mlist | length > 1 %}
+      <details>
+        <summary>Coverage</summary>
+        <ul class="story-coverage">
+          {% for m in mlist %}
+          <li>
+            {% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener noreferrer">{{ m.title }}</a>
+            {% else %}{{ m.title }}{% endif %}
+            <span class="muted">{{ m.domain }}</span>
+          </li>
+          {% endfor %}
+          {% if s.event_count > mlist | length %}
+          <li class="muted">&hellip; and {{ s.event_count - mlist | length }} more</li>
+          {% endif %}
+        </ul>
+      </details>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if pages > 1 %}
+  <p class="digest-pager">
+    {% if page > 1 %}<a href="{{ url_for('digest.day', day=day.isoformat(), lang=lang or none, page=page-1) }}">&larr; Previous</a>{% endif %}
+    <span class="muted">page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a href="{{ url_for('digest.day', day=day.isoformat(), lang=lang or none, page=page+1) }}">Next &rarr;</a>{% endif %}
+  </p>
+  {% endif %}
+</section>
+
+{% endif %}
+{% endblock %}
