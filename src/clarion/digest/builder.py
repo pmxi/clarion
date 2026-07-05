@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
+import numpy as np  # ty: ignore[unresolved-import] — digest extra
 
 from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import stories as stories_store

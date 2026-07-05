@@ -55,11 +55,12 @@ class Supervisor:
         # writer pattern was a non-starter at thousands of streams because
         # each instance would run its own batcher task and contend on the
         # DB lock.
-        self._writer: Optional[EventWriter] = None
+        self._writer = EventWriter(pool)
         # One HTTP session shared across every stream. limit=0 matches the
         # old one-session-per-stream behavior (effectively unbounded); a
         # default connector cap would make first-poll timeouts include
-        # connection-queue wait at thousands of streams.
+        # connection-queue wait at thousands of streams. Created in run()
+        # (aiohttp wants a running loop) before any stream task starts.
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def run(self) -> None:
@@ -68,7 +69,6 @@ class Supervisor:
 
         await asyncio.to_thread(self._init_monitoring_state)
 
-        self._writer = EventWriter(self.pool)
         async with aiohttp.ClientSession(
             headers={"User-Agent": BROWSER_USER_AGENT},
             connector=aiohttp.TCPConnector(limit=0),
@@ -185,6 +185,7 @@ class Supervisor:
         """Restart wrapper around one stream's poll loop. A crash-restart
         re-enters poll_stream with a fresh seen set and re-primes — the
         event table's UNIQUE constraint is the real dedup."""
+        assert self._session is not None  # run() opens it before any task
         while not self._shutdown.is_set():
             try:
                 await poll_stream(

@@ -5,11 +5,16 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
+import aiohttp
 import pytest
 
 from clarion.ingest.poll import poll_stream
 from clarion.ingest.streams.base import Item
+
+# Fake fetchers never touch the session.
+NO_SESSION = cast(aiohttp.ClientSession, None)
 
 
 @dataclass
@@ -59,7 +64,7 @@ def _run(script: list, config: _Config | None = None) -> list[str]:
                 name="test-stream",
                 config=config or _Config(),
                 fetch=fetch,
-                session=None,
+                session=NO_SESSION,
                 emit=emit,
             )
         except asyncio.CancelledError:
@@ -111,7 +116,7 @@ def test_disabled_stream_never_fetches():
             name="off",
             config=_Config(enabled=False),
             fetch=fetch,
-            session=None,
+            session=NO_SESSION,
             emit=emit,
         )
     )
@@ -128,6 +133,6 @@ def test_cancellation_propagates():
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(
             poll_stream(
-                name="t", config=_Config(), fetch=fetch, session=None, emit=emit
+                name="t", config=_Config(), fetch=fetch, session=NO_SESSION, emit=emit
             )
         )
