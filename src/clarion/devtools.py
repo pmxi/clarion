@@ -62,16 +62,18 @@ def run_firehose(database_url: str, config: FirehoseConfig) -> int:
             now = utc_now()
             topic = _TOPICS[(item_number - 1) % len(_TOPICS)]
             author = _AUTHORS[(item_number - 1) % len(_AUTHORS)]
-            events_store.insert(
+            events_store.insert_bulk(
                 conn,
-                source_type=config.source_type,
-                item_id=f"{config.stream_name}-{item_number:06d}",
-                stream_name=config.stream_name,
-                title=f"{topic} #{item_number}",
-                body=None,
-                url=f"https://example.test/{config.stream_name}/{item_number}",
-                author=author,
-                received_at=now,
+                [{
+                    "source_type": config.source_type,
+                    "item_id": f"{config.stream_name}-{item_number:06d}",
+                    "stream_name": config.stream_name,
+                    "title": f"{topic} #{item_number}",
+                    "body": None,
+                    "url": f"https://example.test/{config.stream_name}/{item_number}",
+                    "author": author,
+                    "received_at": now,
+                }],
             )
             monitoring_store.set_last_check_time(conn, now)
 

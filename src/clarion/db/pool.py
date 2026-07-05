@@ -5,9 +5,9 @@ connections out per unit of work. `check=check_connection` revalidates a
 connection on checkout, so a dropped SSH tunnel or Postgres restart heals
 on the next request instead of poisoning the pool.
 
-Long-lived consumers that would otherwise starve the pool (the SSE feed
-holds a connection per client for the life of the browser tab) use
-`raw_connection()` — a dedicated connection outside the pool.
+Long-lived consumers that would otherwise starve the pool (the dev
+firehose holds one for its whole run) use `raw_connection()` — a
+dedicated connection outside the pool.
 """
 
 from __future__ import annotations

@@ -42,10 +42,8 @@ def _get_or_create_file_handler(log_dir: Optional[str] = None) -> logging.Handle
     return _file_handler
 
 
-def setup_logging(name: str, level: Optional[str] = None) -> logging.Logger:
-    """Configure a logger with standard console and file handlers."""
-    console_level = (level or os.getenv("LOG_LEVEL", "INFO")).upper()
-
+def get_logger(name: str) -> logging.Logger:
+    """Get or create a logger with standard console and file handlers."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
@@ -53,15 +51,10 @@ def setup_logging(name: str, level: Optional[str] = None) -> logging.Logger:
         return logger
 
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(getattr(logging, console_level))
+    console_handler.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper()))
     console_handler.setFormatter(_UTCFormatter(CONSOLE_FORMAT, datefmt=CONSOLE_DATEFMT))
     logger.addHandler(console_handler)
 
     logger.addHandler(_get_or_create_file_handler())
 
     return logger
-
-
-def get_logger(name: str) -> logging.Logger:
-    """Get or create a logger with the standard configuration."""
-    return setup_logging(name)

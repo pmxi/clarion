@@ -71,12 +71,12 @@ def _stub_stores(monkeypatch, days):
     monkeypatch.setattr(
         stories_store,
         "story_count",
-        lambda conn, day, lang=None: len(stories),
+        lambda conn, day: len(stories),
     )
     monkeypatch.setattr(
         stories_store,
         "top_stories",
-        lambda conn, day, lang=None, limit=50, offset=0: stories[offset : offset + limit],
+        lambda conn, day, limit=50: stories[:limit],
     )
     monkeypatch.setattr(stories_store, "members_for", _members)
     monkeypatch.setattr(

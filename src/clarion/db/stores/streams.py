@@ -18,7 +18,7 @@ _UPSERT_SQL = (
 )
 
 
-def upsert(conn: psycopg.Connection[DictRow], name: str, source_type: str, config_json: str) -> None:
+def _upsert(conn: psycopg.Connection[DictRow], name: str, source_type: str, config_json: str) -> None:
     conn.execute(_UPSERT_SQL, (name, source_type, config_json))
 
 
@@ -58,7 +58,7 @@ def list_by_prefix(
 def add(conn: psycopg.Connection[DictRow], name: str, source_type: str, config_json: str) -> None:
     if get(conn, name):
         raise ValueError(f"Stream {name!r} already exists.")
-    upsert(conn, name, source_type, config_json)
+    _upsert(conn, name, source_type, config_json)
 
 
 def get(conn: psycopg.Connection[DictRow], name: str) -> Optional[Dict[str, Any]]:
@@ -90,4 +90,4 @@ def toggle(conn: psycopg.Connection[DictRow], name: str) -> None:
         raise ValueError(f"No stream named {name!r}")
     data = json.loads(row["config_json"])
     data["enabled"] = not data.get("enabled", True)
-    upsert(conn, name, row["source_type"], json.dumps(data))
+    _upsert(conn, name, row["source_type"], json.dumps(data))

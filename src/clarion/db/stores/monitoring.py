@@ -17,10 +17,8 @@ def _get_ts(conn: psycopg.Connection[DictRow], key: str) -> Optional[datetime]:
     ).fetchone()
     if not row or row["value"] is None:
         return None
-    value = row["value"]
-    if isinstance(value, datetime):
-        return value
-    return parse_iso_datetime(str(value), assume_local=True)
+    # Values are always the ISO strings _set_ts wrote.
+    return parse_iso_datetime(row["value"])
 
 
 def _set_ts(conn: psycopg.Connection[DictRow], key: str, timestamp: datetime) -> None:

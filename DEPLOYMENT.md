@@ -221,9 +221,10 @@ startup. After any migration that creates tables, fix ownership:
 ALTER TABLE <newtable> OWNER TO clarion_user;
 ```
 
-This bit us during the singular-names migration; the
-`tools/migrate_to_singular_schema.sql` file is still in the tree as
-reference but isn't meant to re-run.
+This bit us during the singular-names migration.
+
+The `app_setting` table is no longer created or read; on databases that
+predate its removal, drop it manually: `DROP TABLE app_setting;`
 
 ## Daily digest job (not yet deployed on oracle)
 

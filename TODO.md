@@ -15,8 +15,9 @@ The product is the daily digest. The collector and dashboard exist to feed it.
 ## Todo
 
 
+~/.claude/plans/concurrent-frolicking-sparkle.md
 
-
+devcontainer is out of date
 
 Not planned
 - X scraping

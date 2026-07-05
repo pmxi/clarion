@@ -7,7 +7,7 @@ transaction), matching the digest builder's idempotent-rebuild contract.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import psycopg
 from psycopg.rows import DictRow
@@ -76,49 +76,28 @@ def day_stats(conn: psycopg.Connection[DictRow], day: date) -> Dict[str, Any]:
     return dict(row) if row else {}
 
 
-def lang_counts(conn: psycopg.Connection[DictRow], day: date, top: int = 8) -> List[Tuple[str, int]]:
+def top_stories(
+    conn: psycopg.Connection[DictRow], day: date, limit: int = 50
+) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT lang, COUNT(*) AS n FROM story
-        WHERE day = %s AND lang IS NOT NULL
-        GROUP BY lang ORDER BY n DESC LIMIT %s
-        """,
-        (day, top),
-    ).fetchall()
-    return [(r["lang"], r["n"]) for r in rows]
-
-
-def top_stories(
-    conn: psycopg.Connection[DictRow],
-    day: date,
-    lang: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> List[Dict[str, Any]]:
-    sql = """
         SELECT s.id, s.title, s.event_count, s.source_count, s.lang,
                e.url AS rep_url, e.received_at AS rep_received_at
         FROM story s
         JOIN event e ON e.id = s.rep_event_id
         WHERE s.day = %s
-    """
-    params: List[Any] = [day]
-    if lang:
-        sql += " AND s.lang = %s"
-        params.append(lang)
-    sql += " ORDER BY s.source_count DESC, s.event_count DESC, s.id LIMIT %s OFFSET %s"
-    params.extend((limit, offset))
-    rows = conn.execute(sql, params).fetchall()
+        ORDER BY s.source_count DESC, s.event_count DESC, s.id
+        LIMIT %s
+        """,
+        (day, limit),
+    ).fetchall()
     return [dict(r) for r in rows]
 
 
-def story_count(conn: psycopg.Connection[DictRow], day: date, lang: Optional[str] = None) -> int:
-    sql = "SELECT COUNT(*) AS n FROM story WHERE day = %s"
-    params: List[Any] = [day]
-    if lang:
-        sql += " AND lang = %s"
-        params.append(lang)
-    row = conn.execute(sql, params).fetchone()
+def story_count(conn: psycopg.Connection[DictRow], day: date) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM story WHERE day = %s", (day,)
+    ).fetchone()
     return int(row["n"]) if row else 0
 
 
