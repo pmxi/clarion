@@ -14,6 +14,7 @@ access to that host as `ubuntu`.
 | `/home/ubuntu/.config/clarion/clarion.env` | Runtime env — holds `DATABASE_URL` (chmod 600, never check in) |
 | `/home/ubuntu/.config/systemd/user/clarion.service` | systemd user unit — collector (`clarion run`) |
 | `/home/ubuntu/.config/systemd/user/clarion-web.service` | systemd user unit — web UI (`clarion-web`) |
+| `/etc/nginx/sites-enabled/clarion.parasmittal.com` | nginx vhost: TLS + proxy to the reader on `127.0.0.1:8766` |
 | `/var/log/postgresql/postgresql-*.log` | Postgres logs (root/postgres reads) |
 | `/tmp/clarion-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
 
@@ -73,13 +74,18 @@ Runs natively on oracle, listens on `localhost:5432`. Version 18.3.
 
 `DATABASE_URL` in the env file points at `postgresql://clarion_user:...@localhost:5432/clarion`.
 
-## Reaching the web UI from your laptop
+## Reaching the web UI
+
+The digest reader is public at **https://clarion.parasmittal.com** —
+nginx (`/etc/nginx/sites-enabled/clarion.parasmittal.com`) terminates
+TLS (certbot-managed cert, auto-renews) and proxies to the reader on
+`127.0.0.1:8766`. The reader is read-only, so no auth is in front of
+it. DNS: an A record `clarion` → 158.101.121.67.
+
+The SSH tunnel still works when you want to bypass nginx:
 
 ```bash
-# Open SSH tunnel — leaves running in background
 ssh -fN -L 8766:localhost:8766 oracle
-
-# Open in browser
 open http://127.0.0.1:8766/
 ```
 
