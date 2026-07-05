@@ -2,11 +2,6 @@
 -- Applied idempotently by clarion.db.migrate.ensure_schema() — once per
 -- process startup and via `clarion db migrate`. Never at connect time.
 
-CREATE TABLE IF NOT EXISTS schema_meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS stream (
     name TEXT PRIMARY KEY,
     -- Which stream implementation handles this row ('rss', 'sitemap_news');
@@ -52,10 +47,10 @@ CREATE TABLE IF NOT EXISTS event (
     UNIQUE (source_type, item_id)
 );
 
+-- The one event index: the digest builder's day fetch and `clarion
+-- status` both walk observed_at. At 100k+ rows/day every extra index
+-- is real write amplification, so nothing else gets one.
 CREATE INDEX IF NOT EXISTS event_observed_at_idx ON event (observed_at DESC);
-CREATE INDEX IF NOT EXISTS event_received_at_idx ON event (received_at DESC);
-CREATE INDEX IF NOT EXISTS event_stream_observed_idx ON event (stream_name, observed_at DESC);
-CREATE INDEX IF NOT EXISTS event_source_observed_idx ON event (source_type, observed_at DESC);
 
 -- Daily story clusters produced by `clarion digest build`. Rebuilt
 -- idempotently per day (delete day + reinsert), so nothing outside this
@@ -70,8 +65,6 @@ CREATE TABLE IF NOT EXISTS story (
     event_count INTEGER NOT NULL,
     -- Distinct publication domains covering the story — the ranking signal.
     source_count INTEGER NOT NULL,
-    -- Dominant language among members (from event metadata), if known.
-    lang TEXT,
     built_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

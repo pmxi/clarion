@@ -21,7 +21,6 @@ def _story(i: int) -> dict:
         "title": f"Story {i}",
         "event_count": 5,
         "source_count": 3,
-        "lang": "en",
         "rep_url": f"https://example{i}.com/a",
         "rep_received_at": datetime(2026, 7, 4, 12, 0, tzinfo=timezone.utc),
     }

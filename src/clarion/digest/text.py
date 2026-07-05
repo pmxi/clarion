@@ -30,8 +30,3 @@ def source_domain(url: Optional[str], stream_name: str) -> str:
         if netloc:
             return netloc
     return stream_name
-
-
-def normalize_lang(lang: Optional[str]) -> Optional[str]:
-    lang = (lang or "").strip().lower()
-    return lang.split("-")[0] or None

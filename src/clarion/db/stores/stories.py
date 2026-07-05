@@ -20,23 +20,23 @@ _STORY_CHUNK = 500
 
 def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict[str, Any]]) -> None:
     """Replace one day's stories. Each story dict carries title,
-    rep_event_id, event_count, source_count, lang, and members —
-    a list of (event_id, similarity) pairs."""
+    rep_event_id, event_count, source_count, and members — a list of
+    (event_id, similarity) pairs."""
     with conn.transaction():
         with conn.cursor() as cur:
             cur.execute("DELETE FROM story WHERE day = %s", (day,))
             id_by_rep: Dict[int, int] = {}
             for lo in range(0, len(stories), _STORY_CHUNK):
                 chunk = stories[lo : lo + _STORY_CHUNK]
-                placeholders = ",".join(["(%s,%s,%s,%s,%s,%s)"] * len(chunk))
+                placeholders = ",".join(["(%s,%s,%s,%s,%s)"] * len(chunk))
                 flat: List[Any] = []
                 for s in chunk:
                     flat.extend((day, s["title"], s["rep_event_id"],
-                                 s["event_count"], s["source_count"], s["lang"]))
+                                 s["event_count"], s["source_count"]))
                 cur.execute(
                     f"""
                     INSERT INTO story (day, title, rep_event_id, event_count,
-                                       source_count, lang)
+                                       source_count)
                     VALUES {placeholders}
                     RETURNING id, rep_event_id
                     """,
@@ -81,7 +81,7 @@ def top_stories(
 ) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT s.id, s.title, s.event_count, s.source_count, s.lang,
+        SELECT s.id, s.title, s.event_count, s.source_count,
                e.url AS rep_url, e.received_at AS rep_received_at
         FROM story s
         JOIN event e ON e.id = s.rep_event_id

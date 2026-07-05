@@ -223,8 +223,16 @@ ALTER TABLE <newtable> OWNER TO clarion_user;
 
 This bit us during the singular-names migration.
 
-The `app_setting` table is no longer created or read; on databases that
-predate its removal, drop it manually: `DROP TABLE app_setting;`
+Objects the schema no longer creates or reads survive on databases that
+predate their removal (schema.sql is `IF NOT EXISTS`-only). Once the
+code referencing them is no longer deployed, drop them manually:
+
+```sql
+DROP TABLE IF EXISTS app_setting, schema_meta;
+DROP INDEX IF EXISTS event_received_at_idx, event_stream_observed_idx,
+                     event_source_observed_idx;
+ALTER TABLE story DROP COLUMN IF EXISTS lang;
+```
 
 ## Daily digest job (not yet deployed on oracle)
 

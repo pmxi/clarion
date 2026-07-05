@@ -21,7 +21,7 @@ from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import stories as stories_store
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
-from clarion.digest.text import normalize_lang, normalize_title, source_domain
+from clarion.digest.text import normalize_title, source_domain
 from clarion.logging import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +59,6 @@ class _Story:
     rep_event_id: int
     event_count: int
     source_count: int
-    lang: Optional[str]
     domains: List[str] = field(default_factory=list)
     members: List[Tuple[int, float]] = field(default_factory=list)  # (event_id, similarity)
     sample_titles: List[str] = field(default_factory=list)
@@ -110,7 +109,6 @@ def build_digest(
             "rep_event_id": s.rep_event_id,
             "event_count": s.event_count,
             "source_count": s.source_count,
-            "lang": s.lang,
             "members": s.members,
         }
         for s in stories
@@ -138,9 +136,7 @@ def _fetch_day(conn, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     # clusters; leave them out of the digest entirely. 12 chars keeps
     # legitimate CJK headlines, which are short in characters.
     sql = """
-        SELECT id, title, url, stream_name,
-               metadata->>'language' AS lang,
-               received_at
+        SELECT id, title, url, stream_name
         FROM event
         WHERE observed_at >= %s AND observed_at < %s
           AND LENGTH(title) >= 12
@@ -244,14 +240,12 @@ def _aggregate(
         if len(idxs) < config.min_events:
             continue
         domains = Counter(source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
-        langs = Counter(lang for k in idxs if (lang := normalize_lang(rows[k]["lang"])))
         medoid = max(idxs, key=lambda k: similarity[k])
         stories.append(_Story(
             title=normalize_title(rows[medoid]["title"]),
             rep_event_id=int(rows[medoid]["id"]),
             event_count=len(idxs),
             source_count=len(domains),
-            lang=langs.most_common(1)[0][0] if langs else None,
             domains=[d for d, _ in domains.most_common(6)],
             members=[(int(rows[k]["id"]), float(similarity[k])) for k in idxs],
             sample_titles=[normalize_title(rows[k]["title"]) for k in idxs[:5]],
@@ -271,7 +265,7 @@ def _print_preview(stories: List[_Story], stats: DigestStats, top: int = 30) -> 
     )
     for rank, s in enumerate(ranked[:top], 1):
         print(f"{rank:3d}. [{s.source_count:3d} sources / {s.event_count:4d} articles]"
-              f" ({s.lang or '??'}) {s.title[:110]}")
+              f" {s.title[:110]}")
         for t in s.sample_titles[1:4]:
             if t != s.title:
                 print(f"       - {t[:100]}")

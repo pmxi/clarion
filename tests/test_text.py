@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from clarion.catalog.canonicalize import canonical_domain
-from clarion.digest.text import MAX_TITLE_CHARS, normalize_lang, normalize_title, source_domain
+from clarion.digest.text import MAX_TITLE_CHARS, normalize_title, source_domain
 
 
 def test_normalize_title_collapses_whitespace_and_caps_length():
@@ -20,13 +20,6 @@ def test_source_domain_strips_www_port_and_userinfo():
 def test_source_domain_falls_back_to_stream_name():
     assert source_domain(None, "my-stream") == "my-stream"
     assert source_domain("not a url", "my-stream") == "my-stream"
-
-
-def test_normalize_lang():
-    assert normalize_lang("EN-us") == "en"
-    assert normalize_lang(" fr ") == "fr"
-    assert normalize_lang("") is None
-    assert normalize_lang(None) is None
 
 
 def test_canonical_domain_variants_collapse():
