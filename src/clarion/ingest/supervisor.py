@@ -12,10 +12,14 @@ import signal
 import time
 from typing import Any, Dict, Optional
 
+import aiohttp
+
 from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import monitoring as monitoring_store
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.streams import Item, Stream, all_specs, build_stream, ensure_loaded
+from clarion.ingest.poll import poll_stream
+from clarion.ingest.streams import Item, StreamSpec, all_specs, get
+from clarion.ingest.streams.base import BROWSER_USER_AGENT
 from clarion.ingest.writer import EventWriter
 from clarion.logging import get_logger
 from clarion.timeutils import utc_now
@@ -34,7 +38,6 @@ _STREAM_REFRESH_SECONDS = 30
 
 class Supervisor:
     def __init__(self, pool: DictConnectionPool):
-        ensure_loaded()
         self.pool = pool
         self._shutdown = asyncio.Event()
         # Live registry of running stream tasks.  Hot-reload diffs this
@@ -53,6 +56,11 @@ class Supervisor:
         # each instance would run its own batcher task and contend on the
         # DB lock.
         self._writer: Optional[EventWriter] = None
+        # One HTTP session shared across every stream. limit=0 matches the
+        # old one-session-per-stream behavior (effectively unbounded); a
+        # default connector cap would make first-poll timeouts include
+        # connection-queue wait at thousands of streams.
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def run(self) -> None:
         logger.info("Starting Clarion supervisor")
@@ -60,18 +68,26 @@ class Supervisor:
 
         await asyncio.to_thread(self._init_monitoring_state)
 
-        await self._refresh_streams(initial=True)
+        self._writer = EventWriter(self.pool)
+        async with aiohttp.ClientSession(
+            headers={"User-Agent": BROWSER_USER_AGENT},
+            connector=aiohttp.TCPConnector(limit=0),
+        ) as session:
+            self._session = session
+            await self._refresh_streams(initial=True)
 
-        refresh_task = asyncio.create_task(self._refresh_loop(), name="stream-refresh")
-        try:
-            await self._shutdown.wait()
-        finally:
-            refresh_task.cancel()
+            refresh_task = asyncio.create_task(self._refresh_loop(), name="stream-refresh")
             try:
-                await refresh_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            await self._cancel_all()
+                await self._shutdown.wait()
+            finally:
+                refresh_task.cancel()
+                try:
+                    await refresh_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                # Stream tasks must be fully cancelled before the session
+                # closes under them.
+                await self._cancel_all()
 
     async def _refresh_loop(self) -> None:
         """Periodically diff DB-configured streams against running tasks."""
@@ -138,11 +154,8 @@ class Supervisor:
 
     def _start_stream(self, name: str, row: Dict[str, Any]) -> None:
         try:
-            stream = build_stream(
-                source_type=row["source_type"],
-                name=row["name"],
-                config_json=row["config_json"],
-            )
+            spec = get(row["source_type"])
+            config = spec.config_cls.model_validate_json(row["config_json"])
         except Exception as exc:
             logger.error(
                 "Failed to build stream %r (type=%s): %s",
@@ -150,7 +163,7 @@ class Supervisor:
             )
             return
         task = asyncio.create_task(
-            self._run_stream(stream),
+            self._run_stream(name, spec, config),
             name=f"stream:{name}",
         )
         self._stream_tasks[name] = task
@@ -168,43 +181,26 @@ class Supervisor:
         except (asyncio.CancelledError, Exception):
             pass
 
-    async def _run_stream(self, stream: Stream) -> None:
+    async def _run_stream(self, name: str, spec: StreamSpec, config: Any) -> None:
+        """Restart wrapper around one stream's poll loop. A crash-restart
+        re-enters poll_stream with a fresh seen set and re-primes — the
+        event table's UNIQUE constraint is the real dedup."""
         while not self._shutdown.is_set():
             try:
-                if self._writer is None:
-                    self._writer = EventWriter(self.pool)
-                writer = self._writer
-                # Concurrency cap per stream. With many streams (700+),
-                # 64-per-stream multiplied = 45k+ items potentially in-flight.
-                # 8 is enough to overlap I/O without ballooning queue memory.
-                sem = asyncio.Semaphore(8)
-                in_flight: set[asyncio.Task] = set()
-
-                async def _handle(item: Item) -> None:
-                    async with sem:
-                        try:
-                            await writer.put(item)
-                        finally:
-                            # Coalesce monitoring_state.last_check_time writes so
-                            # high-rate streams don't serialize on the connection.
-                            self._maybe_update_last_check_time()
-
-                async for item in stream.items():
-                    if self._shutdown.is_set():
-                        break
-                    t = asyncio.create_task(_handle(item))
-                    in_flight.add(t)
-                    t.add_done_callback(in_flight.discard)
-
-                if in_flight:
-                    await asyncio.gather(*in_flight, return_exceptions=True)
-                return
+                await poll_stream(
+                    name=name,
+                    config=config,
+                    fetch=spec.fetch,
+                    session=self._session,
+                    emit=self._emit,
+                )
+                return  # disabled stream: leave the task done
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.exception(
                     "Stream %r crashed: %s. Restarting in %ss",
-                    stream.name,
+                    name,
                     exc,
                     _RESTART_DELAY_SECONDS,
                 )
@@ -216,6 +212,12 @@ class Supervisor:
                     return
                 except asyncio.TimeoutError:
                     continue
+
+    async def _emit(self, item: Item) -> None:
+        await self._writer.put(item)
+        # Coalesce monitoring_state.last_check_time writes so high-rate
+        # streams don't serialize on the connection.
+        self._maybe_update_last_check_time()
 
     def _install_signal_handlers(self) -> None:
         import threading

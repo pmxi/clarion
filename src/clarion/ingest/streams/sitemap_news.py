@@ -1,34 +1,31 @@
-"""Google News sitemap stream.
+"""Google News sitemap streams: config schema, pure XML parsing, one-poll fetch.
 
-Polls a publisher's `<news:news>` sitemap and yields one Item per fresh
-article URL. Belt-and-suspenders dedup: an in-memory `_seen` set for the
-process lifetime plus the `event` table's UNIQUE (source_type, item_id)
-constraint across restarts.
-First poll primes the seen set without emitting (otherwise every restart
-would re-flood the dashboard with the last 48h backlog).
+News orgs maintain a `<news:news>` sitemap (declared in robots.txt and
+required by Google News) listing every article published in the last
+~48h with publish timestamps. Polling it every minute or two gives a
+near-real-time wire of headlines + URLs without scraping article HTML.
 
 Supports gzipped sitemaps transparently (NYT, WaPo). Sitemap *index* files
-(roots that list child sitemaps rather than article URLs) are detected and
-logged with guidance — wire those by pointing at a leaf sitemap directly.
+(roots that list child sitemaps rather than article URLs) are rejected
+with guidance — wire those by pointing at a leaf sitemap directly.
 """
 
 from __future__ import annotations
 
-import asyncio
 import gzip
 from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncIterator
 from xml.etree import ElementTree as ET
 
 import aiohttp
+from pydantic import BaseModel
 
-from clarion.logging import get_logger
-from clarion.ingest.streams.base import Item, Stream
-from clarion.ingest.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.streams.base import Item
 from clarion.timeutils import parse_iso_datetime, utc_now
 
-logger = get_logger(__name__)
+SOURCE_TYPE = "sitemap_news"
+
+_FETCH_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 # The news namespace URI is canonical and consistent across publishers
 # (we resolve by URI, not the `news:` / `n:` prefix the publisher uses).
@@ -37,6 +34,16 @@ logger = get_logger(__name__)
 # namespace. We match those by local name + wildcard, not by URI.
 _NEWS_NS = "http://www.google.com/schemas/sitemap-news/0.9"
 _NS = {"news": _NEWS_NS}
+
+
+class SitemapNewsStreamConfig(BaseModel):
+    """Polls a publisher's Google News sitemap on a fixed interval."""
+
+    sitemap_url: str
+    publication_name: str = ""
+    poll_seconds: int = 120
+    enabled: bool = True
+    max_entries_per_poll: int = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,80 +60,51 @@ class SitemapEntry:
     language: str | None
 
 
-class SitemapNewsStream(Stream):
-    source_type = "sitemap_news"
+async def fetch(
+    session: aiohttp.ClientSession, name: str, config: SitemapNewsStreamConfig
+) -> list[Item]:
+    async with session.get(config.sitemap_url, timeout=_FETCH_TIMEOUT) as resp:
+        resp.raise_for_status()
+        raw = await resp.read()
+    fallback = config.publication_name or name
+    return [
+        entry_to_item(entry, stream_name=name, fallback_publication=fallback)
+        for entry in parse_sitemap_bytes(raw)
+    ]
 
-    def __init__(self, name: str, config: SitemapNewsStreamConfig):
-        super().__init__(name=name)
-        self.config = config
-        self._seen: set[str] = set()
-        self._first_poll = True
 
-    async def items(self) -> AsyncIterator[Item]:
-        if not self.config.enabled:
-            logger.info(f"SitemapNewsStream {self.name!r} is disabled; not starting")
-            return
-
-        logger.info(
-            f"[{self.name}] starting sitemap-news stream: {self.config.sitemap_url} "
-            f"(poll every {self.config.poll_seconds}s)"
-        )
-        headers = {"User-Agent": self.config.user_agent}
-
-        async with aiohttp.ClientSession(headers=headers) as session:
-            while True:
-                try:
-                    entries = await self._fetch_entries(session)
-                    for entry in entries[: self.config.max_entries_per_poll]:
-                        if entry.url in self._seen:
-                            continue
-                        self._seen.add(entry.url)
-                        if self._first_poll:
-                            continue
-                        yield self._to_item(entry)
-                    self._first_poll = False
-                except Exception as exc:
-                    logger.warning(f"[{self.name}] sitemap poll failed: {exc}")
-                await asyncio.sleep(self.config.poll_seconds)
-
-    async def _fetch_entries(
-        self, session: aiohttp.ClientSession
-    ) -> list[SitemapEntry]:
-        async with session.get(self.config.sitemap_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            resp.raise_for_status()
-            raw = await resp.read()
-        return parse_sitemap_bytes(raw)
-
-    def _to_item(self, entry: SitemapEntry) -> Item:
-        # Per-item publication name from the XML wins over the
-        # stream-level config; the config value is just a fallback for
-        # publishers that omit <news:publication><news:name>.
-        publication = entry.publication_name or self.config.publication_name or self.name
-        body_lines = [
-            f"Publication: {publication}",
-            f"Title: {entry.title}",
-            f"Published: {entry.published.isoformat() if entry.published else 'unknown'}",
-            f"URL: {entry.url}",
-        ]
-        if entry.language:
-            body_lines.append(f"Language: {entry.language}")
-        if entry.keywords:
-            body_lines.append(f"Keywords: {', '.join(entry.keywords)}")
-        return Item(
-            id=entry.url,
-            source_type=self.source_type,
-            title=entry.title,
-            body="\n".join(body_lines) + "\n",
-            author=publication,
-            url=entry.url,
-            received_at=entry.published or utc_now(),
-            metadata={
-                "stream_name": self.name,
-                "publication": publication,
-                "language": entry.language,
-                "keywords": entry.keywords,
-            },
-        )
+def entry_to_item(
+    entry: SitemapEntry, *, stream_name: str, fallback_publication: str
+) -> Item:
+    # Per-item publication name from the XML wins; the config value (or
+    # stream name) is just a fallback for publishers that omit
+    # <news:publication><news:name>.
+    publication = entry.publication_name or fallback_publication
+    body_lines = [
+        f"Publication: {publication}",
+        f"Title: {entry.title}",
+        f"Published: {entry.published.isoformat() if entry.published else 'unknown'}",
+        f"URL: {entry.url}",
+    ]
+    if entry.language:
+        body_lines.append(f"Language: {entry.language}")
+    if entry.keywords:
+        body_lines.append(f"Keywords: {', '.join(entry.keywords)}")
+    return Item(
+        id=entry.url,
+        source_type=SOURCE_TYPE,
+        title=entry.title,
+        body="\n".join(body_lines) + "\n",
+        author=publication,
+        url=entry.url,
+        received_at=entry.published or utc_now(),
+        metadata={
+            "stream_name": stream_name,
+            "publication": publication,
+            "language": entry.language,
+            "keywords": entry.keywords,
+        },
+    )
 
 
 def parse_sitemap_bytes(raw: bytes) -> list[SitemapEntry]:

@@ -1,20 +1,17 @@
-"""Shared stream abstractions and built-in stream implementations."""
+"""Shared stream contract and the built-in stream types."""
 
-from clarion.ingest.streams.base import Item, Stream
+from clarion.ingest.streams.base import Item
 from clarion.ingest.streams.registry import (
+    StreamSpec,
     all_specs,
-    build_stream,
     describe_stream_rows,
-    ensure_loaded,
     get,
 )
 
 __all__ = [
     "Item",
-    "Stream",
+    "StreamSpec",
     "all_specs",
-    "build_stream",
     "describe_stream_rows",
-    "ensure_loaded",
     "get",
 ]

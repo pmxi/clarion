@@ -1,23 +1,16 @@
-"""Stream abstraction — transport-agnostic source of Items.
+"""The cross-type stream contract.
 
-Every datastream (RSS, publisher sitemaps, Bluesky
-firehose, ...) implements `Stream`. The async-generator contract hides whether
-a stream is poll-based (RSS, sitemaps) or push-based (WebSocket, SSE) — the
-supervisor consumes both identically:
-
-    async for item in stream.items():
-        ...
-
-The Item is what crosses the stream boundary. Source-specific types
-(RSSEntry, sitemap records) stay inside each stream's implementation.
+A stream type is a pydantic config model plus an async fetch function;
+the generic poll loop (clarion.ingest.poll) runs the pair. The Item is
+what crosses the stream boundary — source-specific types (RSS entries,
+sitemap records) stay inside each stream module.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Protocol
+from typing import Any, Awaitable, Callable, Dict, Protocol
 
 import aiohttp
 
@@ -31,7 +24,7 @@ BROWSER_USER_AGENT = (
 
 @dataclass
 class Item:
-    """A single unit produced by a Stream.
+    """A single unit produced by one poll of a stream.
 
     Fields mirror the `event` table columns the writer persists; the
     consumers are the digest builder and the web UI:
@@ -61,32 +54,7 @@ class PollConfig(Protocol):
     max_entries_per_poll: int
 
 
-# One poll = one fetch. A stream type is a config model plus a function
-# of this shape: (shared session, stream name, config) -> current Items.
+# One poll = one fetch. A stream type's fetch function has this shape:
+# (shared session, stream name, config) -> the source's current Items.
 # Freshness filtering, dedup, and cadence live in the poll loop, not here.
 Fetcher = Callable[[aiohttp.ClientSession, str, Any], Awaitable["list[Item]"]]
-
-
-class Stream(ABC):
-    """Base class for any datastream.
-
-    Subclasses declare their `source_type` class attribute and implement
-    `items()` as an async generator that yields Items indefinitely. Pull
-    sources internally poll + sleep; push sources hold a connection and
-    yield as events arrive. The supervisor doesn't care which.
-    """
-
-    source_type: str = ""
-
-    def __init__(self, name: str):
-        self.name = name
-
-    @abstractmethod
-    def items(self) -> AsyncIterator[Item]:
-        """Yield Items as they become available. Runs indefinitely.
-
-        Must be resilient — catch and log internal errors rather than
-        letting them propagate. The supervisor treats a raised exception
-        as "this stream is dead, restart it".
-        """
-        raise NotImplementedError

@@ -6,7 +6,7 @@ import gzip
 
 import pytest
 
-from clarion.ingest.streams.sitemap_news.stream import parse_sitemap_bytes
+from clarion.ingest.streams.sitemap_news import parse_sitemap_bytes
 
 CANONICAL = b"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"

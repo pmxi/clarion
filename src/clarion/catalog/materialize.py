@@ -28,8 +28,8 @@ from pydantic import HttpUrl
 
 from clarion.db import pool as db_pool
 from clarion.db.stores import streams as streams_store
-from clarion.ingest.streams.rss.config import RSSStreamConfig
-from clarion.ingest.streams.sitemap_news.config import SitemapNewsStreamConfig
+from clarion.ingest.streams.rss import RSSStreamConfig
+from clarion.ingest.streams.sitemap_news import SitemapNewsStreamConfig
 
 SITEMAP_PREFIX = "src:"
 FEED_PREFIX = "src-feed:"
