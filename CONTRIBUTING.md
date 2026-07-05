@@ -4,7 +4,7 @@
 
 Follow the installation instructions in README.md to set up your development environment.
 
-Track TODOs, bugs, and priorities in `DEVELOPMENT.md`.
+The product vision, roadmap, TODOs, bugs, and priorities live in `TODO.md`.
 
 ## Code map
 
