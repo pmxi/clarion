@@ -52,15 +52,12 @@ def test_db_imports_no_domain():
 
 
 def test_web_imports_only_the_sanctioned_surface():
-    """The web app reaches clarion only through db, the stream registry,
-    the flat utilities, and digest.text (dependency-free display helpers)."""
+    """The web app is a digest reader: it reaches clarion only through
+    config, db, and digest.text (dependency-free display helpers)."""
     allowed = (
         "clarion.config",
         "clarion.db",
         "clarion.digest.text",
-        "clarion.ingest.streams",
-        "clarion.logging",
-        "clarion.timeutils",
         "clarion.web",  # its own modules
     )
     offenders = []
