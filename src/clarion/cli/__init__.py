@@ -11,7 +11,7 @@ import argparse
 import sys
 from typing import Optional
 
-from clarion.cli import catalog, db, dev, digest, run, stream
+from clarion.cli import catalog, db, dev, digest, run, status, stream
 from clarion.db import pool as db_pool
 
 
@@ -20,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
     db.register(sub)
     run.register(sub)
+    status.register(sub)
     stream.register(sub)
     digest.register(sub)
     catalog.register(sub)
