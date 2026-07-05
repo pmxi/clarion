@@ -1,5 +1,6 @@
 """The dependency rule that keeps a future codebase split cheap:
-`clarion` (collector, digest, catalog, db) must never import `clarion_web`."""
+core `clarion` (collector, digest, catalog, db) must never import
+`clarion.web`."""
 
 import ast
 from pathlib import Path
@@ -18,24 +19,34 @@ def _imported_modules(path: Path) -> set[str]:
     return out
 
 
-def _offenders(package_dir: Path, forbidden_prefixes: tuple[str, ...]) -> list[str]:
+def _offenders(
+    package_dir: Path,
+    forbidden_prefixes: tuple[str, ...],
+    exclude: Path | None = None,
+) -> list[str]:
     out = []
     for py in package_dir.rglob("*.py"):
+        if exclude is not None and py.is_relative_to(exclude):
+            continue
         for m in _imported_modules(py):
             if any(m == p or m.startswith(p + ".") for p in forbidden_prefixes):
                 out.append(f"{py.relative_to(SRC)} imports {m}")
     return out
 
 
-def test_clarion_never_imports_clarion_web():
-    offenders = _offenders(SRC / "clarion", ("clarion_web",))
-    assert not offenders, f"clarion must not depend on clarion_web: {offenders}"
+def test_core_never_imports_web():
+    offenders = _offenders(
+        SRC / "clarion",
+        ("clarion.web",),
+        exclude=SRC / "clarion" / "web",
+    )
+    assert not offenders, f"core clarion must not depend on clarion.web: {offenders}"
 
 
 def test_db_imports_no_domain():
     offenders = _offenders(
         SRC / "clarion" / "db",
-        ("clarion.ingest", "clarion.digest", "clarion.catalog", "clarion_web"),
+        ("clarion.ingest", "clarion.digest", "clarion.catalog", "clarion.web"),
     )
     assert not offenders, f"db must stay domain-free: {offenders}"
 
@@ -50,9 +61,10 @@ def test_web_imports_only_the_sanctioned_surface():
         "clarion.ingest.streams",
         "clarion.logging",
         "clarion.timeutils",
+        "clarion.web",  # its own modules
     )
     offenders = []
-    for py in (SRC / "clarion_web").rglob("*.py"):
+    for py in (SRC / "clarion" / "web").rglob("*.py"):
         for m in _imported_modules(py):
             if m != "clarion" and not m.startswith("clarion."):
                 continue

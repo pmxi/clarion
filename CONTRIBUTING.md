@@ -19,7 +19,7 @@ src/clarion/
     catalog/     # Media Cloud catalog: sync, discovery, materialize
     cli/         # composition root; each domain registers its own subcommands
     devtools.py  # synthetic firehose
-src/clarion_web/ # Flask app: views/ blueprints per surface + sse.py
+    web/         # Flask app: views/ blueprints per surface + sse.py
 tests/           # pytest; needs DATABASE_URL for the web-route tests
 ```
 
@@ -30,7 +30,7 @@ Import rules (enforced by `tests/test_import_boundaries.py`):
   utilities — never each other, with one sanctioned exception:
   `clarion.ingest.streams` (stream config schemas + registry) is the
   shared stream-type contract, importable by catalog and the web.
-- `clarion` never imports `clarion_web`; the web app reaches the rest
+- Core `clarion` never imports `clarion.web`; the web app reaches the rest
   of the system only through `db`, the stream registry, the flat
   utilities, and `digest.text` (dependency-free display helpers).
 - DDL for the runtime schema runs only via `clarion.db.migrate`

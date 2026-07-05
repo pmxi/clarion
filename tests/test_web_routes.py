@@ -22,7 +22,7 @@ EXPECTED_ROUTES = {
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="needs DATABASE_URL")
 def test_route_map_complete():
-    from clarion_web.app import create_app
+    from clarion.web.app import create_app
 
     app = create_app(database_url=os.environ["DATABASE_URL"])
     rules = {r.rule for r in app.url_map.iter_rules() if r.endpoint != "static"}
@@ -32,7 +32,7 @@ def test_route_map_complete():
 
 @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="needs DATABASE_URL")
 def test_key_pages_render():
-    from clarion_web.app import create_app
+    from clarion.web.app import create_app
 
     app = create_app(database_url=os.environ["DATABASE_URL"])
     client = app.test_client()

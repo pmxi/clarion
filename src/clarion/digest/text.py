@@ -1,6 +1,6 @@
 """Small text/url helpers shared by the digest builder and the web UI.
 
-Deliberately dependency-free: clarion_web imports this, and the web
+Deliberately dependency-free: clarion.web imports this, and the web
 process must keep running without the optional ML extra installed.
 """
 

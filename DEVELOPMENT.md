@@ -38,7 +38,7 @@
 ## Architecture follow-ups
 - Stand up a read API (cursor feed over `event.id` + filtered query + search)
   so aggregator apps stop depending on direct Postgres access. Today
-  `clarion_web` reads Postgres directly — the deliberate "shared Postgres now,
+  `clarion.web` reads Postgres directly — the deliberate "shared Postgres now,
   API later" call.
 - The v5 vocabulary renames (`stream.stream_type`→`source_type`,
   `story.article_count`→`event_count`, `story_article`→`story_event`,
