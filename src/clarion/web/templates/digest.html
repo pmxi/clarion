@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if day %}Clarion — {{ day.isoformat() }}{% else %}Clarion{% endif %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='digest.css') }}">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="brand">Clarion</p>
+  {% if day %}
+  <nav class="daynav">
+    {% if newer %}
+      <a class="nav-newer" href="{{ url_for('day_page', day_str=newer.isoformat()) }}">‹ {{ newer.strftime('%b %-d') }}</a>
+    {% else %}<span class="nav-newer"></span>{% endif %}
+    <h1>{{ day.strftime('%A, %B %-d, %Y') }}</h1>
+    {% if older %}
+      <a class="nav-older" href="{{ url_for('day_page', day_str=older.isoformat()) }}">{{ older.strftime('%b %-d') }} ›</a>
+    {% else %}<span class="nav-older"></span>{% endif %}
+  </nav>
+  <p class="stats">
+    {{ "{:,}".format(total) }} stor{{ 'y' if total == 1 else 'ies' }}
+    · {{ "{:,}".format(stats.events) }} articles
+    {% if stats.built_at %}· built {{ stats.built_at.strftime('%H:%M %Z') }}{% endif %}
+  </p>
+  {% endif %}
+</header>
+
+<main>
+  {% if day %}
+    {% for s in stories %}
+    <article class="card">
+      <div class="card-head">
+        <h2><a href="{{ s.rep_url }}">{{ s.title }}</a></h2>
+        <span class="sources">{{ s.source_count }} source{{ '' if s.source_count == 1 else 's' }}</span>
+      </div>
+      <p class="rep-domain">{{ s.domain }}</p>
+      {% if s.members %}
+      <ul class="members">
+        {% for m in s.members %}
+        <li>
+          <a href="{{ m.url }}">{{ m.title }}</a>
+          <span class="domain">{{ m.domain }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% endfor %}
+
+    {% if not show_all and total > stories|length %}
+    <p class="more">
+      <a href="{{ url_for('day_page', day_str=day.isoformat(), all=1) }}">Show all {{ total }} stories</a>
+    </p>
+    {% endif %}
+
+    {% if older %}
+    <nav class="footnav">
+      <a href="{{ url_for('day_page', day_str=older.isoformat()) }}">‹ {{ older.strftime('%A, %B %-d') }}</a>
+    </nav>
+    {% endif %}
+  {% else %}
+    <div class="empty">
+      <p>No digests yet.</p>
+      <p>Build one with <code>clarion digest build --day yesterday</code>, then reload.</p>
+    </div>
+  {% endif %}
+</main>
+
+</body>
+</html>

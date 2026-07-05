@@ -14,8 +14,7 @@ It is split into processes that share only the Postgres database:
 - **`clarion`** — the headless collector (one task per stream).
 - **`clarion digest build`** — a batch job that clusters one day's articles
   into stories (multilingual title embeddings + cosine clustering).
-- **`clarion-web`** — a web UI that serves the daily digest, a live feed,
-  and stream management.
+- **`clarion-web`** — a reader for the daily digest.
 
 ## Installation
 
@@ -37,8 +36,8 @@ uv sync
 uv run clarion init
 ```
 
-This initializes runtime settings in the database (e.g. a web session
-secret). The only thing you must provide yourself is `DATABASE_URL` (see
+This creates the database schema and loads runtime settings. The only
+thing you must provide yourself is `DATABASE_URL` (see
 [Configuration](#configuration)).
 
 Single-user; there is no app-level login.
@@ -56,8 +55,6 @@ materialize sitemap and RSS streams in bulk:
 ```bash
 uv run clarion catalog materialize --limit 500 --min-fresh 50
 ```
-
-You can add RSS streams through the web UI once it is running.
 
 ### 3. Run the collector
 
@@ -82,30 +79,27 @@ them. Results land in the `story` / `story_event` tables; rebuilding a
 day is idempotent. Use `--dry-run` to preview the top clusters in the
 terminal, and `--day today` to rebuild the current day as it grows.
 
-### 5. Open the web UI (separate process)
+### 5. Read the digest (separate process)
 
 ```bash
 uv run clarion-web
 ```
 
-The web UI is a separate process that reads the same Postgres database and
-manages stream config. It does **not** collect anything itself — run
-`clarion run` for that. Open `http://127.0.0.1:8766`. No login required.
-From there you can:
-- Read the daily digest: each day's stories ranked by breadth of coverage
-- Watch the live feed as items arrive in real time
-- See collector status and recently-collected items
-- Add RSS streams and disable or delete configured streams
+The digest reader is a separate process that reads the same Postgres
+database. It does one thing: serve each day's stories as a page of cards —
+ranked by breadth of coverage, with distinct member headlines under each
+story. Open `http://127.0.0.1:8766`. No login; it binds to localhost.
+Everything else (streams, collector, digest builds) is operated through
+the `clarion` CLI.
 
-For UI load testing, you do not need to wait on real RSS publishers. Emit a
-synthetic firehose straight into the local database:
+For local testing without real RSS publishers, emit a synthetic firehose
+straight into the database, then build a digest from it:
 
 ```bash
 uv run clarion dev firehose --rate 20 --count 200
 ```
 
-This writes `item_received` events that the dashboard renders the same way
-as real traffic. Use `--count 0` to run until you stop it.
+Use `--count 0` to run until you stop it.
 
 ## Configuration
 

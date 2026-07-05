@@ -7,7 +7,7 @@ else loads from the Postgres-backed `app_setting` table via load().
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 
@@ -20,8 +20,6 @@ load_dotenv()
 
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
-    SESSION_SECRET: Optional[str] = None
 
     @classmethod
     def require_database_url(cls) -> str:
