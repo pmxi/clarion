@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from clarion.cli.common import database_label
-from clarion.config import settings
+from clarion.config import require_database_url
 from clarion.devtools import FirehoseConfig, run_firehose
 
 
@@ -23,7 +23,7 @@ def cmd_dev_firehose(args: argparse.Namespace) -> None:
         f"at {config.rate:.2f} items/sec {target}. Press Ctrl-C to stop."
     )
     try:
-        emitted = run_firehose(settings.require_database_url(), config)
+        emitted = run_firehose(require_database_url(), config)
     except KeyboardInterrupt:
         print("\nStopped.")
         return

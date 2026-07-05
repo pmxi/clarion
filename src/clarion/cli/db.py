@@ -5,12 +5,10 @@ from __future__ import annotations
 import argparse
 
 from clarion.cli.common import open_pool
-from clarion.db.migrate import ensure_schema
 
 
 def cmd_db_migrate(_args: argparse.Namespace) -> None:
-    with open_pool().connection() as conn:
-        ensure_schema(conn)
+    open_pool()
     print("Schema is up to date.")
 
 

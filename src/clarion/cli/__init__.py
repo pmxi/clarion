@@ -11,14 +11,13 @@ import argparse
 import sys
 from typing import Optional
 
-from clarion.cli import catalog, db, dev, digest, init, run, stream
+from clarion.cli import catalog, db, dev, digest, run, stream
 from clarion.db import pool as db_pool
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="clarion")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    init.register(sub)
     db.register(sub)
     run.register(sub)
     stream.register(sub)

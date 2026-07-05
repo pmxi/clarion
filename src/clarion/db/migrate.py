@@ -1,8 +1,9 @@
 """Schema application — the only place DDL runs.
 
-Called once per process startup (collector, web, `clarion init`) and by
-`clarion db migrate`. Connection-time DDL (the old LocalDatabase applied
-schema.sql on every instantiation, i.e. every web request) is gone.
+Called once per process startup (collector, web, CLI) via
+db.open_pool_with_schema. Connection-time DDL (the old LocalDatabase
+applied schema.sql on every instantiation, i.e. every web request) is
+gone.
 """
 
 from __future__ import annotations

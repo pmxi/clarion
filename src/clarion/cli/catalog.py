@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from clarion.catalog.materialize import MaterializeFilter, format_plan, materialize
-from clarion.config import settings
+from clarion.config import require_database_url
 
 
 def cmd_catalog_sync(args: argparse.Namespace) -> None:
@@ -37,7 +37,7 @@ def cmd_catalog_materialize(args: argparse.Namespace) -> None:
         kinds=kinds,
     )
     result = materialize(
-        database_url=settings.require_database_url(),
+        database_url=require_database_url(),
         flt=flt,
         include_sitemaps=include_sitemaps,
         include_feeds=include_feeds,

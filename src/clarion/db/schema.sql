@@ -7,12 +7,6 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS app_setting (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS stream (
     name TEXT PRIMARY KEY,
     -- Which stream implementation handles this row ('rss', 'sitemap_news');

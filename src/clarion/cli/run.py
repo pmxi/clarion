@@ -6,17 +6,11 @@ import argparse
 import asyncio
 
 from clarion.cli.common import open_pool
-from clarion.config import settings
-from clarion.db.migrate import ensure_schema
 from clarion.ingest.supervisor import Supervisor
 
 
 def cmd_run(_args: argparse.Namespace) -> None:
-    pool = open_pool()
-    with pool.connection() as conn:
-        ensure_schema(conn)
-        settings.load(conn)
-    asyncio.run(Supervisor(pool).run())
+    asyncio.run(Supervisor(open_pool()).run())
 
 
 def register(sub: argparse._SubParsersAction) -> None:

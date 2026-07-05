@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from clarion.config import settings
-from clarion.db import pool as db_pool
+from clarion.config import require_database_url
+from clarion.db import open_pool_with_schema
 from clarion.db.pool import DictConnectionPool
 
 
 def open_pool() -> DictConnectionPool:
-    return db_pool.open_pool(settings.require_database_url())
+    """Open the process-wide pool, applying the schema on the way —
+    every CLI command self-bootstraps on a fresh database."""
+    return open_pool_with_schema(require_database_url())
 
 
 def prompt(label: str, default: Optional[str] = None) -> str:
@@ -21,7 +23,7 @@ def prompt(label: str, default: Optional[str] = None) -> str:
 
 def database_label() -> str:
     """The DATABASE_URL with the password elided, for display."""
-    url = settings.require_database_url()
+    url = require_database_url()
     if "@" not in url:
         return url
     scheme_and_user, host_and_db = url.rsplit("@", maxsplit=1)

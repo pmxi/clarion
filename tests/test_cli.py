@@ -5,7 +5,6 @@ from clarion.cli import parse_cli
 
 def test_commands_parse():
     for argv in (
-        ["init"],
         ["run"],
         ["stream", "list"],
         ["digest", "build", "--day", "2026-01-01", "--dry-run"],

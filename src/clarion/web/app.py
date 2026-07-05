@@ -13,7 +13,7 @@ from datetime import date
 
 from flask import Flask, abort, redirect, render_template, request, url_for
 
-from clarion.config import settings
+from clarion.config import require_database_url
 from clarion.db import open_pool_with_schema
 from clarion.db import pool as db_pool
 from clarion.db.stores import stories as stories_store
@@ -93,6 +93,6 @@ def create_app() -> Flask:
 
 
 def main() -> None:
-    open_pool_with_schema(settings.require_database_url())
+    open_pool_with_schema(require_database_url())
     port = int(os.environ.get("CLARION_WEB_PORT", "8766"))
     create_app().run(host="127.0.0.1", port=port)
