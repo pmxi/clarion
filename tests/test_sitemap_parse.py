@@ -1,4 +1,4 @@
-"""parse_sitemap_bytes: the pure core of the sitemap_news stream."""
+"""parse_sitemap_bytes and entry_to_item: the pure core of sitemap_news."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import gzip
 
 import pytest
 
-from clarion.ingest.streams.sitemap_news import parse_sitemap_bytes
+from clarion.ingest.streams.sitemap_news import entry_to_item, parse_sitemap_bytes
 
 CANONICAL = b"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -99,3 +99,19 @@ def test_invalid_xml_raises():
 def test_unexpected_root_raises():
     with pytest.raises(RuntimeError, match="unexpected root"):
         parse_sitemap_bytes(b"<rss/>")
+
+
+def test_item_has_no_body_and_prefers_per_entry_publication():
+    entries = parse_sitemap_bytes(CANONICAL)
+    item = entry_to_item(entries[0], stream_name="src:example.com", fallback_publication="Config Name")
+    # A sitemap carries no article text; everything it does carry has a column.
+    assert item.body is None
+    assert item.author == "Example Times"  # XML wins over the fallback
+    assert item.metadata["publication"] == "Example Times"
+    assert item.metadata["language"] == "en"
+
+
+def test_item_publication_falls_back_to_config():
+    entries = parse_sitemap_bytes(CANONICAL)
+    item = entry_to_item(entries[1], stream_name="src:example.com", fallback_publication="Config Name")
+    assert item.author == "Config Name"

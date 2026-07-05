@@ -48,6 +48,8 @@ def test_entry_maps_identity_and_content():
     assert first.url == "https://example.com/first"
     assert first.author == "alice@example.com"
     assert first.received_at == datetime(2026, 7, 4, 12, 30, tzinfo=UTC)
+    # The body is the entry's own text only — no reconstituted header block.
+    assert first.body == "Something happened."
 
 
 def test_entry_metadata_carries_feed_context():

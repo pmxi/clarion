@@ -38,7 +38,7 @@ class Item:
     id: str
     source_type: str
     title: str
-    body: str
+    body: str | None
     author: str
     url: str | None
     received_at: datetime

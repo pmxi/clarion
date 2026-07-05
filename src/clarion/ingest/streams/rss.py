@@ -85,20 +85,13 @@ def entry_to_item(
         or feed_title
     )
 
-    body = (
-        f"Feed: {feed_title}\n"
-        f"Title: {title}\n"
-        f"Author: {author}\n"
-        f"Published: {published.isoformat() if published else 'unknown'}\n"
-        f"URL: {url or 'N/A'}\n\n"
-        f"{full_content}"
-    )
-
     return Item(
         id=str(entry_id),
         source_type=SOURCE_TYPE,
         title=title,
-        body=body,
+        # The body is the entry's own text only — title/author/url live in
+        # their columns, and the writer nulls a body that repeats the title.
+        body=full_content,
         author=author,
         url=url,
         received_at=published or utc_now(),

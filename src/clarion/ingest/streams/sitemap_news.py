@@ -80,21 +80,13 @@ def entry_to_item(
     # stream name) is just a fallback for publishers that omit
     # <news:publication><news:name>.
     publication = entry.publication_name or fallback_publication
-    body_lines = [
-        f"Publication: {publication}",
-        f"Title: {entry.title}",
-        f"Published: {entry.published.isoformat() if entry.published else 'unknown'}",
-        f"URL: {entry.url}",
-    ]
-    if entry.language:
-        body_lines.append(f"Language: {entry.language}")
-    if entry.keywords:
-        body_lines.append(f"Keywords: {', '.join(entry.keywords)}")
     return Item(
         id=entry.url,
         source_type=SOURCE_TYPE,
         title=entry.title,
-        body="\n".join(body_lines) + "\n",
+        # A news sitemap carries no article text — everything else it
+        # gives us lives in the dedicated columns and metadata.
+        body=None,
         author=publication,
         url=entry.url,
         received_at=entry.published or utc_now(),

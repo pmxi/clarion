@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS event (
     stream_name TEXT NOT NULL,
     -- Content
     title TEXT NOT NULL,
-    -- body is nullable: for sources where it duplicates title (Bluesky) or
-    -- where it's just reconstituted metadata (sitemap_news), we leave it null
-    -- and consumers fall back to title.
+    -- body is nullable: news sitemaps carry no article text, and RSS
+    -- bodies that just repeat the title are stored as NULL; consumers
+    -- fall back to title.
     body TEXT,
     url TEXT,
     author TEXT,
@@ -51,9 +51,9 @@ CREATE TABLE IF NOT EXISTS event (
     --   observed_at  = when clarion wrote this row
     received_at TIMESTAMPTZ NOT NULL,
     observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    -- Source-specific bag for anything we don't filter on (Bluesky lang,
-    -- RSS feed_title, raw keywords list, ...). Use JSONB so we can still
-    -- spot-check via ->> when needed.
+    -- Source-specific bag for anything we don't filter on (RSS feed_title,
+    -- sitemap publication/language/keywords, ...). Use JSONB so we can
+    -- still spot-check via ->> when needed.
     metadata JSONB,
     UNIQUE (source_type, item_id)
 );
