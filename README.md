@@ -30,19 +30,11 @@ uv sync
 
 ## Quick start
 
-### 1. Configure operator-level settings
+The only setup is `DATABASE_URL` (see [Configuration](#configuration));
+every command creates the schema itself on first contact with a fresh
+database. Single-user; there is no app-level login.
 
-```bash
-uv run clarion init
-```
-
-This creates the database schema and loads runtime settings. The only
-thing you must provide yourself is `DATABASE_URL` (see
-[Configuration](#configuration)).
-
-Single-user; there is no app-level login.
-
-### 2. Add a stream
+### 1. Add a stream
 
 ```bash
 uv run clarion stream add --type rss            # any RSS or Atom feed
@@ -56,16 +48,17 @@ materialize sitemap and RSS streams in bulk:
 uv run clarion catalog materialize --limit 500 --min-fresh 50
 ```
 
-### 3. Run the collector
+### 2. Run the collector
 
 ```bash
 uv run clarion run
 ```
 
 This starts the supervisor: one task per enabled stream, writing every
-item into the append-only `event` table. It is headless — no web UI.
+item into the append-only `event` table. It is headless — check on it
+any time with `clarion status` (stream count, event total, heartbeat).
 
-### 4. Build the daily digest
+### 3. Build the daily digest
 
 ```bash
 uv sync --extra digest     # once: pulls torch + sentence-transformers
@@ -79,7 +72,7 @@ them. Results land in the `story` / `story_event` tables; rebuilding a
 day is idempotent. Use `--dry-run` to preview the top clusters in the
 terminal, and `--day today` to rebuild the current day as it grows.
 
-### 5. Read the digest (separate process)
+### 4. Read the digest (separate process)
 
 ```bash
 uv run clarion-web

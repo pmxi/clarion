@@ -100,14 +100,12 @@ To close a tunnel: `pkill -f 'ssh -fN -L 8766'` (or the matching port).
 
 | Path | What |
 |---|---|
-| `/digest` | Daily story digest — redirects to the latest built day. |
-| `/digest/<date>` | Stories for one UTC day, ranked by distinct-publication coverage; language filter + pagination. Reads `story` / `story_event` only, so it needs a `clarion digest build` to have run for that day. |
-| `/` | Original dashboard (status + 2-column live feed). |
-| `/live` | Multi-source live monitor with sidebar (filter by source type + top stream), full-text search, rate counters. |
-| `/streams` | Stream-row management — search/filter/paginate; toggle/delete. |
-| `/streams/activity` | Per-stream emission rates over a recent window. |
-| `/streams/new` | Manually add a stream. |
-| `/events/stream` | SSE feed used by `/`, `/live`. |
+| `/` | Redirects to the latest built digest day (or an empty state). |
+| `/<date>` | Stories for one UTC day, ranked by distinct-publication coverage. Reads `story` / `story_event` only, so it needs a `clarion digest build` to have run for that day. |
+
+That is the whole surface: the web app is a digest reader. Stream
+management and collector health live in the `clarion` CLI
+(`stream list/add/remove`, `status`).
 
 ## Common management operations
 
@@ -169,7 +167,7 @@ ssh oracle '
 ## Database schema
 
 The runtime schema is in **`src/clarion/db/schema.sql`**, applied
-idempotently once per process startup (collector, web, `clarion init`)
+idempotently once per process startup (collector, web, CLI)
 and on demand via `clarion db migrate` — never at connect time. The
 catalog schema lives in **`src/clarion/catalog/schema.sql`** (applied by
 the catalog tools).
@@ -183,9 +181,7 @@ All tables use **singular names** as of the May-2026 migration.
 | `event` | One row per observed item. `UNIQUE (source_type, item_id)` is also the dedup ledger. `body` is nullable when redundant with `title`. Carries `received_at` (publisher) and `observed_at` (clarion). |
 | `story`, `story_event` | Daily story clusters written by `clarion digest build`; rebuilt idempotently per UTC day (delete day + reinsert), so never reference `story.id` from elsewhere. |
 | `stream` | Streams the supervisor polls. `config_json` is JSONB. |
-| `app_setting` | Key-value config (`local_setting` was dropped July 2026 — empty and unreferenced). |
 | `monitoring_state` | Collector heartbeats (`monitoring_start_time`, `last_check_time`). |
-| `schema_meta` | Schema-version pointer. |
 
 The classifier-era tables (`classification`, `classification_failure`,
 `telegram_link_token`) were dropped in July 2026 — they were empty. The
@@ -314,7 +310,7 @@ touches those prefixes.
 | Memory drift | Slow growth under sustained ingest — `MemoryMax=4G` + `Restart=always` is the current backstop. Restarts cost 5min of re-priming (sitemap streams skip first-poll emission). |
 | `event` size | **Append-only and kept indefinitely — there is no prune.** Grows ~150–200 MB/day (~236k rows/day) at current load. Watch disk on oracle and manage capacity at the infra level (bigger volume, table partitioning, archiving). Do **not** add a time-based prune to trim it. |
 | Long tail of streams | The single-process asyncio supervisor handles ~750-1500 streams comfortably. Beyond that, CPU pegs and memory grows. Going wider needs a worker-pool refactor. |
-| Postgres backups | Not yet wired up — and now load-bearing: `event` is append-only and kept indefinitely, so its full history is **irreplaceable** if the DB is lost. The `sources.*` catalog is re-derivable from Media Cloud (hours to re-walk); `stream` and `app_setting` are also irreplaceable. Wiring up backups is a real TODO. |
+| Postgres backups | Not yet wired up — and now load-bearing: `event` is append-only and kept indefinitely, so its full history is **irreplaceable** if the DB is lost. The `sources.*` catalog is re-derivable from Media Cloud (hours to re-walk); `stream` is also irreplaceable. Wiring up backups is a real TODO. |
 
 ## Catalog re-walk cost
 
