@@ -22,8 +22,8 @@ Decide: `event.body` and `event.author` are written but nothing reads
 them. Keep collecting (raw material for future features: search,
 summarization) or stop writing them too.
 
-Deploy the daily digest systemd timer on oracle (DEPLOYMENT.md has the
-proposed unit; the digest is still built by hand).
+Backfill the digest gap (2026-07-02 through 2026-07-06) from a laptop:
+`uv run clarion digest build --day YYYY-MM-DD`, one day at a time.
 
 Postgres backups are not wired up; `event` and `stream` are
 irreplaceable.
