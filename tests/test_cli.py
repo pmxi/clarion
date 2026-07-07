@@ -8,6 +8,7 @@ def test_commands_parse():
         ["run"],
         ["status"],
         ["stream", "list"],
+        ["digest", "run", "--poll-seconds", "5"],
         ["digest", "build", "--day", "2026-01-01", "--dry-run"],
         ["db", "migrate"],
         ["catalog", "materialize", "--dry-run"],

@@ -18,6 +18,8 @@ def cmd_status(_args: argparse.Namespace) -> None:
         total = events_store.count(conn)
         n_streams = len(streams_store.list_all(conn))
         latest = events_store.recent(conn, limit=5)
+        cursor = monitoring_store.get_digest_cursor(conn)
+        latest_id = events_store.latest_id(conn)
 
     print(f"Database:  {database_label()}")
     print(f"Streams:   {n_streams} configured")
@@ -29,6 +31,10 @@ def cmd_status(_args: argparse.Namespace) -> None:
     else:
         age = int((utc_now() - last_check).total_seconds())
         print(f"Heartbeat: {age}s since the collector last emitted")
+    if cursor is None:
+        print("Digest:    daemon has never run")
+    else:
+        print(f"Digest:    cursor {latest_id - cursor} events behind the stream")
     if latest:
         print("Latest:")
         for e in latest:
