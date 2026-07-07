@@ -14,6 +14,7 @@ access to that host as `ubuntu`.
 | `/home/ubuntu/.config/clarion/clarion.env` | Runtime env — holds `DATABASE_URL` (chmod 600, never check in) |
 | `/home/ubuntu/.config/systemd/user/clarion.service` | systemd user unit — collector (`clarion run`) |
 | `/home/ubuntu/.config/systemd/user/clarion-web.service` | systemd user unit — web UI (`clarion-web`) |
+| `/home/ubuntu/.config/systemd/user/clarion-digest.service` | systemd user unit — digest daemon (`clarion digest run`) |
 | `/etc/nginx/sites-enabled/clarion.parasmittal.com` | nginx vhost: TLS + proxy to the reader on `127.0.0.1:8766` |
 | `/var/log/postgresql/postgresql-*.log` | Postgres logs (root/postgres reads) |
 | `/tmp/clarion-discovery/*.log` | Output of ad-hoc discovery walks (`discover_sitemaps`, `discover_feeds`) |
@@ -152,8 +153,8 @@ ssh oracle '
   cd /home/ubuntu/clarion \
     && git fetch origin master \
     && git reset --hard origin/master \
-    && ~/.local/bin/uv sync --frozen \
-    && systemctl --user restart clarion.service clarion-web.service'
+    && ~/.local/bin/uv sync --frozen --extra digest \
+    && systemctl --user restart clarion.service clarion-web.service clarion-digest.service'
 ```
 
 `uv sync` is needed whenever dependencies or entry points change; for a
@@ -236,53 +237,53 @@ DROP INDEX IF EXISTS event_received_at_idx, event_stream_observed_idx,
 ALTER TABLE story DROP COLUMN IF EXISTS lang;
 ```
 
-## Daily digest job (not yet deployed on oracle)
+## The digest daemon
 
-`clarion digest build` is the third process: a batch job that embeds one
-UTC day's titles (EmbeddingGemma-300m, multilingual), clusters them into
-stories, and writes `story` / `story_event`. The web `/digest` pages
-read only those tables, so the web unit needs no new dependencies — but
-the build job needs the ML extra:
+`clarion digest run` is the third long-running process: it holds the
+title encoder (EmbeddingGemma-300m, multilingual) resident and folds
+new events into stories continuously — embed the last poll's titles,
+assign each to a live story or open one, merge fragments periodically.
+Whole-day batch embedding took hours on oracle's ARM CPU; the same work
+as a trickle is under a second per poll. It needs the ML extra
+(included in the standard deploy command) and, once per host, the
+encoder weights in `~/.cache/huggingface` (~1.2 GB; the model is
+license-gated on Hugging Face, so either set `HF_TOKEN` in the env file
+or rsync the cache directory from a machine that already has it).
 
-```bash
-ssh oracle 'cd /home/ubuntu/clarion && ~/.local/bin/uv sync --frozen --extra digest'
-```
-
-To run it nightly for the just-closed UTC day, add a user timer pair
-(`~/.config/systemd/user/clarion-digest.{service,timer}`):
+`~/.config/systemd/user/clarion-digest.service`:
 
 ```ini
-# clarion-digest.service
+[Unit]
+Description=Clarion digest daemon
+
 [Service]
-Type=oneshot
 Nice=10
+MemoryMax=6G
 WorkingDirectory=/home/ubuntu/clarion
 EnvironmentFile=/home/ubuntu/.config/clarion/clarion.env
-ExecStart=/home/ubuntu/clarion/.venv/bin/clarion digest build --day yesterday
-```
+ExecStart=/home/ubuntu/clarion/.venv/bin/clarion digest run
+Restart=always
+RestartSec=10
 
-```ini
-# clarion-digest.timer
-[Timer]
-OnCalendar=*-*-* 00:20 UTC
-Persistent=true
 [Install]
-WantedBy=timers.target
+WantedBy=default.target
 ```
 
 Then `systemctl --user daemon-reload && systemctl --user enable --now
-clarion-digest.timer`.
+clarion-digest.service`.
 
-Notes:
-- First run downloads the ~1.2 GB encoder from Hugging Face into
-  `~/.cache/huggingface`.
-- On oracle's 4-core ARM CPU, embedding a ~200k-article day is the slow
-  part — expect hours, not minutes (benchmark before relying on it; an
-  M-series laptop does the same day in ~25 min). The per-day embedding
-  cache in `artifacts/` makes intra-day rebuilds (`--day today`)
-  incremental. Cache files are ~300 MB/day of float16 vectors; prune old
-  ones freely.
-- `Nice=10` keeps it from starving the collector; latency doesn't matter.
+Operational notes:
+- Restarts are lossless: every batch commits atomically with its
+  cursor, and the daemon rebuilds its in-memory state from `story` +
+  `event_embedding` on startup. `clarion status` shows how far the
+  cursor trails the stream.
+- On its very first run (no cursor) it starts at the top of the current
+  UTC day and catches up; the backlog embeds at CPU speed, so give a
+  fresh host some minutes.
+- `clarion digest build --day YYYY-MM-DD` backfills days from before
+  the daemon existed. It refuses the current day; for days inside the
+  daemon's 48h window, stop the daemon first.
+- `Nice=10` keeps embedding from starving the collector.
 
 ## Adding scraping coverage
 

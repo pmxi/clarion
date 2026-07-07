@@ -11,10 +11,11 @@ materializes large source lists from the Media Cloud catalog. Incoming items
 are written to Postgres as an append-only event log.
 
 It is split into processes that share only the Postgres database:
-- **`clarion`** — the headless collector (one task per stream).
-- **`clarion digest build`** — a batch job that clusters one day's articles
-  into stories (multilingual title embeddings + cosine clustering).
-- **`clarion-web`** — a reader for the daily digest.
+- **`clarion run`** — the headless collector (one task per stream).
+- **`clarion digest run`** — the digest daemon: clusters new articles
+  into stories continuously (multilingual title embeddings + cosine
+  clustering), so today's digest is always current.
+- **`clarion-web`** — a reader for the digest.
 
 ## Installation
 
@@ -58,19 +59,21 @@ This starts the supervisor: one task per enabled stream, writing every
 item into the append-only `event` table. It is headless — check on it
 any time with `clarion status` (stream count, event total, heartbeat).
 
-### 3. Build the daily digest
+### 3. Run the digest daemon
 
 ```bash
 uv sync --extra digest     # once: pulls torch + sentence-transformers
-uv run clarion digest build --day yesterday
+uv run clarion digest run
 ```
 
-This clusters one UTC day's articles into stories: titles are embedded
+This clusters articles into stories as they arrive: titles are embedded
 with a multilingual encoder (EmbeddingGemma-300m by default), grouped by
-cosine similarity, and ranked by how many distinct publications covered
-them. Results land in the `story` / `story_event` tables; rebuilding a
-day is idempotent. Use `--dry-run` to preview the top clusters in the
-terminal, and `--day today` to rebuild the current day as it grows.
+cosine similarity against the live stories of the last 48 hours, and
+ranked by how many distinct publications covered them. Results land in
+the `story` / `story_event` tables and today's digest grows in place.
+Restarts are lossless (state rebuilds from the database). To construct
+days from before the daemon existed, use
+`clarion digest build --day YYYY-MM-DD`.
 
 ### 4. Read the digest (separate process)
 
