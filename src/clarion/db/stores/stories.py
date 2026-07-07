@@ -139,24 +139,27 @@ def all_members(
 
 
 def replace_day(conn: psycopg.Connection[DictRow], day: date, stories: List[Dict[str, Any]]) -> None:
-    """Replace one day's stories. Each story dict carries title,
-    rep_event_id, event_count, source_count, and members — a list of
-    (event_id, similarity) pairs."""
+    """Replace one day's stories (the backfill builder's write path).
+    Each story dict carries title, rep_event_id, event_count,
+    source_count, centroid, first_seen_at, last_seen_at, and members —
+    a list of (event_id, similarity) pairs."""
     with conn.transaction():
         with conn.cursor() as cur:
             cur.execute("DELETE FROM story WHERE day = %s", (day,))
             id_by_rep: Dict[int, int] = {}
             for lo in range(0, len(stories), _STORY_CHUNK):
                 chunk = stories[lo : lo + _STORY_CHUNK]
-                placeholders = ",".join(["(%s,%s,%s,%s,%s)"] * len(chunk))
+                placeholders = ",".join(["(%s,%s,%s,%s,%s,%s,%s,%s)"] * len(chunk))
                 flat: List[Any] = []
                 for s in chunk:
                     flat.extend((day, s["title"], s["rep_event_id"],
-                                 s["event_count"], s["source_count"]))
+                                 s["event_count"], s["source_count"],
+                                 s["centroid"], s["first_seen_at"], s["last_seen_at"]))
                 cur.execute(
                     f"""
                     INSERT INTO story (day, title, rep_event_id, event_count,
-                                       source_count)
+                                       source_count, centroid,
+                                       first_seen_at, last_seen_at)
                     VALUES {placeholders}
                     RETURNING id, rep_event_id
                     """,

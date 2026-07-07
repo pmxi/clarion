@@ -101,8 +101,9 @@ def register(sub: argparse._SubParsersAction) -> None:
         help="Backfill one past UTC day's stories (the daemon owns the live window)",
     )
     dbuild.add_argument(
-        "--day", default="today",
-        help="UTC day to build: YYYY-MM-DD, 'today' or 'yesterday' (default: today)",
+        "--day", default="yesterday",
+        help="Past UTC day to build: YYYY-MM-DD or 'yesterday' (default: yesterday). "
+             "Stop the daemon first for days inside its 48h window.",
     )
     dbuild.add_argument(
         "--threshold", type=float, default=0.92,

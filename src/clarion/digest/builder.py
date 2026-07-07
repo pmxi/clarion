@@ -1,4 +1,10 @@
-"""Digest builder: fetch a day's events, embed titles, cluster, persist.
+"""Digest backfill: rebuild one past UTC day's stories wholesale.
+
+The digest daemon (clarion.digest.daemon) owns the live window; this
+builder (re)constructs days from before the daemon ran. It refuses the
+current day outright, and days inside the daemon's 48h window should be
+built only while the daemon is stopped (replace_day would pull stories
+out from under its in-memory state).
 
 Day bucketing uses observed_at (UTC): received_at comes from publishers
 and contains garbage (epoch zeros, future dates), while observed_at is
@@ -21,6 +27,7 @@ from clarion.db.pool import DictConnectionPool
 from clarion.db.stores import stories as stories_store
 from clarion.digest.cluster import cluster_greedy
 from clarion.digest.embedder import DEFAULT_MODEL, TitleEmbedder
+from clarion.digest.stream import vec_to_bytes
 from clarion.digest.text import normalize_title, source_domain
 from clarion.logging import get_logger
 
@@ -59,6 +66,9 @@ class _Story:
     rep_event_id: int
     event_count: int
     source_count: int
+    centroid: np.ndarray
+    first_seen: datetime
+    last_seen: datetime
     domains: List[str] = field(default_factory=list)
     members: List[Tuple[int, float]] = field(default_factory=list)  # (event_id, similarity)
     sample_titles: List[str] = field(default_factory=list)
@@ -73,6 +83,11 @@ def build_digest(
     and separate checkouts for the fetch and the final write mean a
     connection dropped mid-embed heals instead of failing the run.
     """
+    if day >= datetime.now(timezone.utc).date():
+        raise SystemExit(
+            "digest build backfills past days only — the digest daemon "
+            "(clarion digest run) owns the live window"
+        )
     stats = DigestStats(day=day)
 
     t0 = time.monotonic()
@@ -95,7 +110,7 @@ def build_digest(
     stats.seconds_cluster = time.monotonic() - t0
     stats.n_clusters = int(result.assignment.max()) + 1 if len(rows) else 0
 
-    stories = _aggregate(rows, result.assignment, result.similarity, config)
+    stories = _aggregate(rows, emb, result.assignment, result.similarity, config)
     stats.n_stories = len(stories)
 
     if dry_run:
@@ -109,6 +124,9 @@ def build_digest(
             "rep_event_id": s.rep_event_id,
             "event_count": s.event_count,
             "source_count": s.source_count,
+            "centroid": vec_to_bytes(s.centroid),
+            "first_seen_at": s.first_seen,
+            "last_seen_at": s.last_seen,
             "members": s.members,
         }
         for s in stories
@@ -136,7 +154,7 @@ def _fetch_day(conn, day: date, config: DigestConfig) -> List[Dict[str, Any]]:
     # clusters; leave them out of the digest entirely. 12 chars keeps
     # legitimate CJK headlines, which are short in characters.
     sql = """
-        SELECT id, title, url, stream_name
+        SELECT id, title, url, stream_name, observed_at
         FROM event
         WHERE observed_at >= %s AND observed_at < %s
           AND LENGTH(title) >= 12
@@ -226,6 +244,7 @@ def _embed_with_cache(
 
 def _aggregate(
     rows: List[Dict[str, Any]],
+    emb: np.ndarray,
     assignment: np.ndarray,
     similarity: np.ndarray,
     config: DigestConfig,
@@ -241,11 +260,19 @@ def _aggregate(
             continue
         domains = Counter(source_domain(rows[k]["url"], rows[k]["stream_name"]) for k in idxs)
         medoid = max(idxs, key=lambda k: similarity[k])
+        centroid = emb[idxs].mean(axis=0)
+        norm = float(np.linalg.norm(centroid))
+        if norm > 0:
+            centroid /= norm
+        observed = [rows[k]["observed_at"] for k in idxs]
         stories.append(_Story(
             title=normalize_title(rows[medoid]["title"]),
             rep_event_id=int(rows[medoid]["id"]),
             event_count=len(idxs),
             source_count=len(domains),
+            centroid=centroid.astype(np.float32),
+            first_seen=min(observed),
+            last_seen=max(observed),
             domains=[d for d, _ in domains.most_common(6)],
             members=[(int(rows[k]["id"]), float(similarity[k])) for k in idxs],
             sample_titles=[normalize_title(rows[k]["title"]) for k in idxs[:5]],
