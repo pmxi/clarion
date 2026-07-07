@@ -42,6 +42,9 @@ logger = get_logger(__name__)
 class DaemonConfig:
     model_name: str = DEFAULT_MODEL
     device: Optional[str] = None
+    # float32, not the embedder's bf16 default: CPUs without native bf16
+    # (oracle's ARM) hit a fallback path that is ~6x slower per title.
+    dtype: str = "float32"
     threshold: float = 0.92
     poll_seconds: float = 30.0
     batch_size: int = 512            # events fetched + embedded per cycle
@@ -56,7 +59,7 @@ class DigestDaemon:
         self.pool = pool
         self.config = config
         self._embedder = TitleEmbedder(
-            model_name=config.model_name, device=config.device
+            model_name=config.model_name, device=config.device, dtype=config.dtype
         )
         self._clusterer: Optional[StreamClusterer] = None
         self._cursor = 0

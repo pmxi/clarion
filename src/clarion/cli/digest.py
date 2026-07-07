@@ -52,6 +52,7 @@ def cmd_digest_run(args: argparse.Namespace) -> None:
     config = DaemonConfig(
         model_name=args.model,
         device=args.device,
+        dtype=args.dtype,
         threshold=args.threshold,
         poll_seconds=args.poll_seconds,
         batch_size=args.batch_size,
@@ -78,6 +79,11 @@ def register(sub: argparse._SubParsersAction) -> None:
         help="sentence-transformers model for title embeddings",
     )
     drun.add_argument("--device", default=None, help="Torch device override (e.g. cpu, mps)")
+    drun.add_argument(
+        "--dtype", default="float32",
+        help="Torch dtype (default: float32 — bf16 is ~6x slower on CPUs "
+             "without native bf16 support)",
+    )
     drun.add_argument(
         "--poll-seconds", type=float, default=30.0,
         help="How often to check for new events when caught up (default: 30)",
