@@ -43,3 +43,19 @@ def get_last_check_time(conn: psycopg.Connection[DictRow]) -> Optional[datetime]
 
 def set_last_check_time(conn: psycopg.Connection[DictRow], timestamp: datetime) -> None:
     _set_ts(conn, "last_check_time", timestamp)
+
+
+def get_digest_cursor(conn: psycopg.Connection[DictRow]) -> Optional[int]:
+    """Last event id the digest daemon has clustered."""
+    row = conn.execute(
+        "SELECT value FROM monitoring_state WHERE key='digest_cursor'"
+    ).fetchone()
+    return int(row["value"]) if row and row["value"] is not None else None
+
+
+def set_digest_cursor(conn: psycopg.Connection[DictRow], event_id: int) -> None:
+    conn.execute(
+        "INSERT INTO monitoring_state (key, value) VALUES ('digest_cursor', %s) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=NOW()",
+        (str(event_id),),
+    )

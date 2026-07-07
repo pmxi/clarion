@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-import numpy as np  # ty: ignore[unresolved-import] — digest extra
+import numpy as np
 
 DEFAULT_MODEL = "google/embeddinggemma-300m"
 DEFAULT_DTYPE = "bfloat16"
@@ -36,8 +36,8 @@ class TitleEmbedder:
 
     def _ensure_model(self):
         if self._model is None:
-            import torch  # ty: ignore[unresolved-import] — digest extra
-            from sentence_transformers import SentenceTransformer  # ty: ignore[unresolved-import] — digest extra
+            import torch
+            from sentence_transformers import SentenceTransformer
 
             kwargs = {}
             if self.dtype:

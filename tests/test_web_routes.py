@@ -84,7 +84,7 @@ def _stub_stores(monkeypatch, days):
         lambda conn, day: {
             "stories": len(stories),
             "events": 300,
-            "built_at": datetime(2026, 7, 5, 7, 0, tzinfo=timezone.utc),
+            "updated": datetime(2026, 7, 5, 7, 0, tzinfo=timezone.utc),
         },
     )
 

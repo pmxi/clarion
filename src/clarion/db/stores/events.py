@@ -7,7 +7,7 @@ indefinitely and capacity is handled at the infrastructure level.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import psycopg
 from psycopg.rows import DictRow
@@ -40,6 +40,36 @@ def insert_bulk(conn: psycopg.Connection[DictRow], rows: List[Dict[str, Any]]) -
         flat,
     ).fetchall()
     return [int(r["id"]) for r in inserted]
+
+
+def fetch_clusterable_since(
+    conn: psycopg.Connection[DictRow], after_id: int, limit: int = 512
+) -> List[Dict[str, Any]]:
+    """The digest daemon's feed: events past the cursor whose titles are
+    long enough to carry story signal (mirrors the backfill builder's
+    LENGTH filter; ultra-short titles congeal into junk clusters)."""
+    rows = conn.execute(
+        """
+        SELECT id, title, url, stream_name, observed_at
+        FROM event
+        WHERE id > %s AND LENGTH(title) >= 12
+        ORDER BY id ASC LIMIT %s
+        """,
+        (after_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def latest_id(conn: psycopg.Connection[DictRow]) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(id), 0) AS mx FROM event").fetchone()
+    return int(row["mx"]) if row else 0
+
+
+def min_id_since(conn: psycopg.Connection[DictRow], since: Any) -> Optional[int]:
+    row = conn.execute(
+        "SELECT MIN(id) AS mn FROM event WHERE observed_at >= %s", (since,)
+    ).fetchone()
+    return int(row["mn"]) if row and row["mn"] is not None else None
 
 
 def recent(conn: psycopg.Connection[DictRow], limit: int = 25) -> List[Dict[str, Any]]:

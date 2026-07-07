@@ -23,7 +23,7 @@
   <p class="stats">
     {{ "{:,}".format(total) }} stor{{ 'y' if total == 1 else 'ies' }}
     · {{ "{:,}".format(stats.events) }} articles
-    {% if stats.built_at %}· built {{ stats.built_at.strftime('%H:%M %Z') }}{% endif %}
+    {% if stats.updated %}· updated {{ stats.updated.strftime('%H:%M %Z') }}{% endif %}
   </p>
   {% endif %}
 </header>
